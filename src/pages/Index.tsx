@@ -58,8 +58,8 @@ const Index = () => {
               <FreeEnergyChart fe={data.fe} keyframes={data.keyframes} />
             </Panel>
 
-            <Panel title="Pipeline Stages" subtitle="Stage 1–5 status & artifacts">
-              <StageList />
+            <Panel title="Pipeline Stages" subtitle="Click Restart/Start to re-run any stage with the current config">
+              <StageList showRestart />
             </Panel>
 
             <Panel

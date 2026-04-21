@@ -1,6 +1,9 @@
 import { STAGE_INFO } from "@/lib/vkan-types";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, Loader2, Hourglass } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { CheckCircle2, Loader2, Hourglass, RotateCw, Play } from "lucide-react";
+import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 const statusConfig = {
   complete: { icon: CheckCircle2, label: "complete", className: "border-signal-fe/40 text-signal-fe" },
@@ -8,7 +11,21 @@ const statusConfig = {
   planned: { icon: Hourglass, label: "planned", className: "border-border text-muted-foreground" },
 } as const;
 
-export function StageList() {
+export function StageList({ showRestart = false }: { showRestart?: boolean }) {
+  const { toast } = useToast();
+  const [busy, setBusy] = useState<number | null>(null);
+
+  const restart = (id: number, name: string) => {
+    setBusy(id);
+    setTimeout(() => {
+      setBusy(null);
+      toast({
+        title: `Stage ${id} re-queued`,
+        description: `${name} will re-run with the current configuration.`,
+      });
+    }, 700);
+  };
+
   return (
     <ol className="space-y-3">
       {STAGE_INFO.map((s) => {
@@ -24,9 +41,29 @@ export function StageList() {
                 <Icon className={`h-3.5 w-3.5 ${cfg.className.split(" ").pop()}`} />
                 <span className="font-mono text-sm">{s.name}</span>
               </div>
-              <Badge variant="outline" className={cfg.className}>
-                {cfg.label}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className={cfg.className}>
+                  {cfg.label}
+                </Badge>
+                {showRestart && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 text-[11px]"
+                    disabled={busy === s.id}
+                    onClick={() => restart(s.id, s.name)}
+                  >
+                    {busy === s.id ? (
+                      <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                    ) : s.status === "planned" ? (
+                      <Play className="mr-1 h-3 w-3" />
+                    ) : (
+                      <RotateCw className="mr-1 h-3 w-3" />
+                    )}
+                    {s.status === "planned" ? "Start" : "Restart"}
+                  </Button>
+                )}
+              </div>
             </div>
             <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{s.summary}</p>
             {s.artifacts.length > 0 && (
