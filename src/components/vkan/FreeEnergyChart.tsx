@@ -12,9 +12,10 @@ import {
 interface Props {
   fe: number[];
   keyframes: number[];
+  cursor?: number;
 }
 
-export function FreeEnergyChart({ fe, keyframes }: Props) {
+export function FreeEnergyChart({ fe, keyframes, cursor }: Props) {
   const data = fe.map((v, i) => ({ t: i, fe: v }));
   return (
     <div className="h-72 w-full">
@@ -52,6 +53,13 @@ export function FreeEnergyChart({ fe, keyframes }: Props) {
               label={{ value: `kf ${kf}`, fill: "hsl(var(--signal-causal))", fontSize: 9, position: "top" }}
             />
           ))}
+          {cursor !== undefined && (
+            <ReferenceLine
+              x={cursor}
+              stroke="hsl(var(--signal-fe))"
+              strokeWidth={1.5}
+            />
+          )}
           <Area
             type="monotone"
             dataKey="fe"
