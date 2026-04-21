@@ -3,6 +3,7 @@ import { Panel, Stat } from "@/components/vkan/Panel";
 import { FreeEnergyChart } from "@/components/vkan/FreeEnergyChart";
 import { CausalHeatmap } from "@/components/vkan/CausalHeatmap";
 import { Trajectory3D } from "@/components/vkan/Trajectory3D";
+import { Minimap2D } from "@/components/vkan/Minimap2D";
 import { StageList } from "@/components/vkan/StageList";
 import { PlaybackControls } from "@/components/vkan/PlaybackControls";
 import { useVkanResults } from "@/hooks/useVkanResults";
@@ -30,6 +31,9 @@ const Index = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Badge variant="outline" className="border-primary/40 text-primary">
+            V-KAN only · ORB-SLAM3 cmp @ stage 4
+          </Badge>
           <Badge variant="outline" className="border-signal-fe/40 text-signal-fe">
             stage 2 ✓
           </Badge>
@@ -78,6 +82,30 @@ const Index = () => {
                 keyframes={data.keyframes}
                 currentFrame={ph.frame}
               />
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <div>
+                  <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                    top-down (x–y) · spot lateral drift
+                  </div>
+                  <Minimap2D
+                    trajectory={data.trajectory}
+                    keyframes={data.keyframes}
+                    currentFrame={ph.frame}
+                    plane="xy"
+                  />
+                </div>
+                <div>
+                  <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                    side (x–z) · spot z-axis ambiguity
+                  </div>
+                  <Minimap2D
+                    trajectory={data.trajectory}
+                    keyframes={data.keyframes}
+                    currentFrame={ph.frame}
+                    plane="xz"
+                  />
+                </div>
+              </div>
               <PlaybackControls
                 playing={ph.playing}
                 frame={ph.frame}
