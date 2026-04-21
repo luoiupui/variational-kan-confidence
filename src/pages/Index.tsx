@@ -4,11 +4,17 @@ import { FreeEnergyChart } from "@/components/vkan/FreeEnergyChart";
 import { CausalHeatmap } from "@/components/vkan/CausalHeatmap";
 import { Trajectory3D } from "@/components/vkan/Trajectory3D";
 import { StageList } from "@/components/vkan/StageList";
+import { PlaybackControls } from "@/components/vkan/PlaybackControls";
 import { useVkanResults } from "@/hooks/useVkanResults";
+import { usePlayhead } from "@/hooks/usePlayhead";
 import { Badge } from "@/components/ui/badge";
 
 const Index = () => {
   const { data, error } = useVkanResults();
+  const total = data?.fe.length ?? 1;
+  const ph = usePlayhead(total, 1);
+  const isKf =
+    data?.keyframes.some((k) => Math.abs(k - ph.frame) < 3) ?? false;
 
   return (
     <AppShell>
@@ -52,10 +58,10 @@ const Index = () => {
           <div className="grid gap-4 lg:grid-cols-3">
             <Panel
               title="Free Energy"
-              subtitle="Variational FE per frame · purple lines = detected keyframes"
+              subtitle="Variational FE per frame · purple = keyframes · cyan = playhead"
               className="lg:col-span-2"
             >
-              <FreeEnergyChart fe={data.fe} keyframes={data.keyframes} />
+              <FreeEnergyChart fe={data.fe} keyframes={data.keyframes} cursor={ph.frame} />
             </Panel>
 
             <Panel title="Pipeline Stages" subtitle="Click Restart/Start to re-run any stage with the current config">
@@ -63,11 +69,27 @@ const Index = () => {
             </Panel>
 
             <Panel
-              title="3D Trajectory"
-              subtitle="Camera path · spheres = keyframes · cone = current pose"
+              title="3D Trajectory · Live Replay"
+              subtitle="Cone = current pose · trail grows as time advances · keyframes pop on crossing"
               className="lg:col-span-2"
             >
-              <Trajectory3D trajectory={data.trajectory} keyframes={data.keyframes} />
+              <Trajectory3D
+                trajectory={data.trajectory}
+                keyframes={data.keyframes}
+                currentFrame={ph.frame}
+              />
+              <PlaybackControls
+                playing={ph.playing}
+                frame={ph.frame}
+                total={total}
+                speed={ph.speed}
+                onPlay={ph.play}
+                onPause={ph.pause}
+                onReset={ph.reset}
+                onSeek={ph.setFrame}
+                onSpeed={ph.setSpeed}
+                isKeyframe={isKf}
+              />
             </Panel>
 
             <Panel
