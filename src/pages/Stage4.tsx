@@ -3,9 +3,11 @@ import { AppShell } from "@/components/vkan/AppShell";
 import { Panel, Stat } from "@/components/vkan/Panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, AlertTriangle, Play, Loader2 } from "lucide-react";
+import { CheckCircle2, AlertTriangle, CheckCircle, Play, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { Trajectory3D } from "@/components/vkan/Trajectory3D";
+import type { Stage4RealData } from "@/lib/stage4-types";
 
 interface SeqMetrics {
   ate_rmse: number;
@@ -39,6 +41,16 @@ interface Stage4Data {
     ate_geomean_vkan: number;
     ate_geomean_orb3: number;
   };
+}
+
+/** Shape from worker/stage4/eval_with_evo.py */
+function isRealData(d: unknown): d is Stage4RealData {
+  return (
+    !!d &&
+    typeof d === "object" &&
+    Array.isArray((d as Stage4RealData).sequences) &&
+    "trajectory_est" in ((d as Stage4RealData).sequences[0] ?? {})
+  );
 }
 
 function MiniTraj({
