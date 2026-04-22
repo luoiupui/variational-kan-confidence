@@ -1,15 +1,17 @@
 # Stage 4 — Real TUM RGB-D pipeline
 
-End-to-end loop: **A → C → B**.
+End-to-end loop: **A → C → B → F**, persisted to **Lovable Cloud**.
 
 ## Files
 
 | File | Role |
 |------|------|
-| `tum_adapter.py` | Streams `(ts, rgb, depth, gt_pose)` from a TUM sequence dir. |
+| `tum_adapter.py` | Streams `(ts, rgb, depth, gt_pose)` + holds the **Step E** sequence whitelist. |
 | `run_vkan_real.py` | **Step A** — V-KAN inference → `vkan_traj.tum` + `vkan_<seq>.json`. |
 | `eval_with_evo.py` | **Step C** — runs `evo_ape`/`evo_rpe`, emits `stage4_results.json`. |
 | `run_orb3_baseline.sh` | **Step B** — runs ORB-SLAM3 (Docker) → `orb3_traj.tum` (+ map). |
+| `run_dynaslam_baseline.sh` | **Step F** — runs DynaSLAM (Docker) → `dynaslam_traj.tum`. |
+| `INGEST.md` | Worker → Cloud HTTP contract (`ingest-run` + intent polling). |
 
 ## On the Fly worker
 
