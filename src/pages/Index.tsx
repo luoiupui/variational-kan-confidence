@@ -81,6 +81,7 @@ const Index = () => {
                 trajectory={data.trajectory}
                 keyframes={data.keyframes}
                 currentFrame={ph.frame}
+                showViewToggle
               />
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <div>
