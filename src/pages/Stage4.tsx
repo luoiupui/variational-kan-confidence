@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { Trajectory3D } from "@/components/vkan/Trajectory3D";
 import type { Stage4RealData } from "@/lib/stage4-types";
+import { GeomeanPanel } from "@/components/vkan/GeomeanPanel";
 
 interface SeqMetrics {
   ate_rmse: number;
@@ -176,6 +177,10 @@ const Stage4 = () => {
           Failed to load stage4_results.json: {error}
         </div>
       )}
+
+      <div className="mb-4">
+        <GeomeanPanel />
+      </div>
 
       {realData && (
         <div className="space-y-4">
