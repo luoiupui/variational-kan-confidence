@@ -6,6 +6,7 @@ import { Trajectory3D } from "@/components/vkan/Trajectory3D";
 import { Minimap2D } from "@/components/vkan/Minimap2D";
 import { StageList } from "@/components/vkan/StageList";
 import { PlaybackControls } from "@/components/vkan/PlaybackControls";
+import { RunCenter } from "@/components/vkan/RunCenter";
 import { useVkanResults } from "@/hooks/useVkanResults";
 import { usePlayhead } from "@/hooks/usePlayhead";
 import { Badge } from "@/components/ui/badge";
@@ -72,10 +73,12 @@ const Index = () => {
               <StageList showRestart />
             </Panel>
 
+            <RunCenter />
+
             <Panel
               title="3D Trajectory · Live Replay"
               subtitle="Cone = current pose · trail grows as time advances · keyframes pop on crossing"
-              className="lg:col-span-2"
+              className="lg:col-span-3"
             >
               <Trajectory3D
                 trajectory={data.trajectory}
