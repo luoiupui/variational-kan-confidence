@@ -14,7 +14,108 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      runs: {
+        Row: {
+          ate_per_frame: Json | null
+          checkpoint_hash: string | null
+          completed_at: string | null
+          created_at: string
+          error: string | null
+          fe: Json | null
+          frames: number | null
+          git_sha: string | null
+          id: string
+          keyframes: Json | null
+          map_points: Json | null
+          method: string
+          metrics: Json | null
+          notes: string | null
+          requested_by: string | null
+          sequence_id: string
+          sequence_name: string
+          started_at: string | null
+          status: string
+          trajectory_est: Json | null
+          trajectory_gt: Json | null
+        }
+        Insert: {
+          ate_per_frame?: Json | null
+          checkpoint_hash?: string | null
+          completed_at?: string | null
+          created_at?: string
+          error?: string | null
+          fe?: Json | null
+          frames?: number | null
+          git_sha?: string | null
+          id?: string
+          keyframes?: Json | null
+          map_points?: Json | null
+          method: string
+          metrics?: Json | null
+          notes?: string | null
+          requested_by?: string | null
+          sequence_id: string
+          sequence_name: string
+          started_at?: string | null
+          status?: string
+          trajectory_est?: Json | null
+          trajectory_gt?: Json | null
+        }
+        Update: {
+          ate_per_frame?: Json | null
+          checkpoint_hash?: string | null
+          completed_at?: string | null
+          created_at?: string
+          error?: string | null
+          fe?: Json | null
+          frames?: number | null
+          git_sha?: string | null
+          id?: string
+          keyframes?: Json | null
+          map_points?: Json | null
+          method?: string
+          metrics?: Json | null
+          notes?: string | null
+          requested_by?: string | null
+          sequence_id?: string
+          sequence_name?: string
+          started_at?: string | null
+          status?: string
+          trajectory_est?: Json | null
+          trajectory_gt?: Json | null
+        }
+        Relationships: []
+      }
+      sequences: {
+        Row: {
+          created_at: string
+          description: string | null
+          dynamic_pct: number
+          enabled: boolean
+          family: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          dynamic_pct?: number
+          enabled?: boolean
+          family: string
+          id: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          dynamic_pct?: number
+          enabled?: boolean
+          family?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
