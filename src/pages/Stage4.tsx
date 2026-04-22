@@ -111,13 +111,17 @@ function Cell({
 const Stage4 = () => {
   const { toast } = useToast();
   const [data, setData] = useState<Stage4Data | null>(null);
+  const [realData, setRealData] = useState<Stage4RealData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/data/stage4_results.json")
       .then((r) => r.json())
-      .then(setData)
+      .then((j) => {
+        if (isRealData(j)) setRealData(j);
+        else setData(j);
+      })
       .catch((e) => setError(String(e)));
   }, []);
 
@@ -173,7 +177,91 @@ const Stage4 = () => {
         </div>
       )}
 
-      {data && (
+      {realData && (
+        <div className="space-y-4">
+          <div className="rounded-md border border-signal-fe/30 bg-signal-fe/5 p-3 text-[11px] leading-relaxed text-muted-foreground">
+            <span className="font-mono text-signal-fe">
+              <CheckCircle className="mr-1 inline h-3 w-3" />
+              LIVE ·{" "}
+            </span>
+            Real TUM RGB-D evaluation generated
+            {realData.generated_at
+              ? ` at ${new Date(realData.generated_at).toLocaleString()}`
+              : ""}
+            . Metrics computed via <code className="font-mono text-foreground/80">evo_ape</code> /
+            <code className="ml-1 font-mono text-foreground/80">evo_rpe</code>.
+          </div>
+          {realData.sequences.map((seq) => {
+            const v = seq.metrics.vkan;
+            const o = seq.metrics.orb3;
+            return (
+              <div key={seq.id} className="grid gap-4 lg:grid-cols-3">
+                <Panel
+                  title={`3D · ${seq.name}`}
+                  subtitle="Toggle Trajectory / Map / Both · cyan V-KAN · amber ORB-SLAM3 · dashed GT"
+                  className="lg:col-span-2"
+                >
+                  <Trajectory3D
+                    trajectory={seq.trajectory_est}
+                    keyframes={seq.keyframes}
+                    showViewToggle
+                    extraTrajectories={[
+                      {
+                        name: "GT",
+                        points: seq.trajectory_gt,
+                        color: "hsl(0 0% 80%)",
+                        dashed: true,
+                      },
+                      ...(seq.trajectory_orb3
+                        ? [
+                            {
+                              name: "ORB-SLAM3",
+                              points: seq.trajectory_orb3,
+                              color: "hsl(38 92% 60%)",
+                            },
+                          ]
+                        : []),
+                    ]}
+                    mapPoints={seq.map_points}
+                  />
+                </Panel>
+                <Panel title="Metrics" subtitle={`${seq.frames} frames`}>
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="col-span-2 mb-1 grid grid-cols-2 gap-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                      <span className="text-signal-fe">v-kan</span>
+                      <span className={o ? "text-signal-warn" : ""}>orb3</span>
+                    </div>
+                    <Stat label="ATE-RMSE [m]" value={v.ate_rmse.toFixed(4)} accent="primary" />
+                    <Stat
+                      label="ATE-RMSE [m]"
+                      value={o ? o.ate_rmse.toFixed(4) : "—"}
+                      accent="warn"
+                    />
+                    <Stat label="RPE-trans" value={v.rpe_trans.toFixed(4)} accent="primary" />
+                    <Stat
+                      label="RPE-trans"
+                      value={o ? o.rpe_trans.toFixed(4) : "—"}
+                      accent="warn"
+                    />
+                    <Stat
+                      label="tracked %"
+                      value={v.tracking_pct.toFixed(1)}
+                      accent="primary"
+                    />
+                    <Stat
+                      label="tracked %"
+                      value={o ? o.tracking_pct.toFixed(1) : "—"}
+                      accent="warn"
+                    />
+                  </div>
+                </Panel>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {!realData && data && (
         <>
           <div className="mb-4 rounded-md border border-signal-warn/30 bg-signal-warn/5 p-3 text-[11px] leading-relaxed text-muted-foreground">
             <span className="font-mono text-signal-warn">NOTE · </span>
