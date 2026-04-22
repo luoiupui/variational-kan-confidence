@@ -1,0 +1,22 @@
+# Fly config for the Stage 4 worker. No HTTP service — this is a pure
+# background poller that talks to Postgres + the ingest-run edge function.
+# Killing the [http_service] block is what silences the "not listening on
+# 0.0.0.0:8080" warning you saw after `flyctl secrets set`.
+
+app = "worker-misty-butterfly-4770"
+primary_region = "ams"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[processes]
+  worker = "python -u worker/stage4/poller.py"
+
+[[mounts]]
+  source      = "worker_data"
+  destination = "/data"
+
+[[vm]]
+  size      = "shared-cpu-1x"
+  memory    = "1gb"
+  processes = ["worker"]
