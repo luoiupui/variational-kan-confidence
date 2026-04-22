@@ -178,6 +178,10 @@ const Stage4 = () => {
         </div>
       )}
 
+      <div className="mb-4">
+        <GeomeanPanel />
+      </div>
+
       {realData && (
         <div className="space-y-4">
           <div className="rounded-md border border-signal-fe/30 bg-signal-fe/5 p-3 text-[11px] leading-relaxed text-muted-foreground">
