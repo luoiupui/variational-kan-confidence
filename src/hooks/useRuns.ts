@@ -49,7 +49,7 @@ export function useRuns(limit = 50) {
   useEffect(() => {
     refresh();
     const ch = supabase
-      .channel("runs-changes")
+      .channel(`runs-changes-${Math.random().toString(36).slice(2)}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "runs" },
@@ -59,7 +59,9 @@ export function useRuns(limit = 50) {
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [refresh]);
+    // refresh is stable enough; we intentionally only subscribe once per mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return { runs, error, loading, refresh };
 }
