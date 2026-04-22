@@ -24,6 +24,35 @@ from typing import Iterator, List, Optional, Tuple
 import numpy as np
 
 
+# Stage 4 — Step E sequence whitelist.
+# Mirrors public.sequences in Lovable Cloud. Keep in sync.
+TUM_WHITELIST: dict[str, dict] = {
+    "fr1_xyz":              {"name": "fr1/xyz",              "family": "TUM-RGBD",     "dynamic_pct": 0,  "tarball": "rgbd_dataset_freiburg1_xyz.tgz"},
+    "fr1_desk":             {"name": "fr1/desk",             "family": "TUM-RGBD",     "dynamic_pct": 5,  "tarball": "rgbd_dataset_freiburg1_desk.tgz"},
+    "fr2_desk":             {"name": "fr2/desk",             "family": "TUM-RGBD",     "dynamic_pct": 0,  "tarball": "rgbd_dataset_freiburg2_desk.tgz"},
+    "fr3_sitting_static":   {"name": "fr3/sitting_static",   "family": "TUM-RGBD-Dyn", "dynamic_pct": 25, "tarball": "rgbd_dataset_freiburg3_sitting_static.tgz"},
+    "fr3_walking_xyz":      {"name": "fr3/walking_xyz",      "family": "TUM-RGBD-Dyn", "dynamic_pct": 70, "tarball": "rgbd_dataset_freiburg3_walking_xyz.tgz"},
+    "fr3_walking_halfsphere": {"name": "fr3/walking_halfsphere", "family": "TUM-RGBD-Dyn", "dynamic_pct": 70, "tarball": "rgbd_dataset_freiburg3_walking_halfsphere.tgz"},
+}
+
+
+def resolve_sequence(seq_id: str, data_root: str = "/data") -> str:
+    """Map a whitelist seq_id (e.g. 'fr3_walking_xyz') to its on-disk root.
+    Expects `<data_root>/<basename(tarball without .tgz)>` to exist."""
+    if seq_id not in TUM_WHITELIST:
+        raise KeyError(f"unknown seq_id {seq_id!r}; whitelist={list(TUM_WHITELIST)}")
+    base = TUM_WHITELIST[seq_id]["tarball"].removesuffix(".tgz")
+    path = os.path.join(data_root, base)
+    if not os.path.isdir(path):
+        raise FileNotFoundError(
+            f"sequence dir {path!r} not found — download with:\n"
+            f"  wget -O /tmp/{TUM_WHITELIST[seq_id]['tarball']} "
+            f"https://cvg.cit.tum.de/rgbd/dataset/freiburg{base[19]}/{TUM_WHITELIST[seq_id]['tarball']}\n"
+            f"  tar -xzf /tmp/{TUM_WHITELIST[seq_id]['tarball']} -C {data_root}"
+        )
+    return path
+
+
 @dataclass
 class TumPose:
     ts: float

@@ -1,9 +1,11 @@
 import { STAGE_INFO } from "@/lib/vkan-types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, Loader2, Hourglass, RotateCw, Play } from "lucide-react";
+import { CheckCircle2, Loader2, Hourglass, RotateCw, Play, Cloud } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { CompletenessBar } from "./CompletenessBar";
+import { useRuns } from "@/hooks/useRuns";
 
 const statusConfig = {
   complete: { icon: CheckCircle2, label: "complete", className: "border-signal-fe/40 text-signal-fe" },
@@ -14,6 +16,11 @@ const statusConfig = {
 export function StageList({ showRestart = false }: { showRestart?: boolean }) {
   const { toast } = useToast();
   const [busy, setBusy] = useState<number | null>(null);
+  const { runs } = useRuns(50);
+
+  // Stage 4 cloud signal: bumps perceived completeness once a real run has landed.
+  const stage4Done = runs.some((r) => r.status === "done");
+  const stage4Running = runs.some((r) => r.status === "running" || r.status === "queued");
 
   const restart = (id: number, name: string) => {
     setBusy(id);
@@ -31,6 +38,8 @@ export function StageList({ showRestart = false }: { showRestart?: boolean }) {
       {STAGE_INFO.map((s) => {
         const cfg = statusConfig[s.status];
         const Icon = cfg.icon;
+        const liveCompleteness =
+          s.id === 4 ? (stage4Done ? 100 : stage4Running ? 85 : s.completeness) : s.completeness;
         return (
           <li
             key={s.id}
@@ -40,8 +49,16 @@ export function StageList({ showRestart = false }: { showRestart?: boolean }) {
               <div className="flex items-center gap-2">
                 <Icon className={`h-3.5 w-3.5 ${cfg.className.split(" ").pop()}`} />
                 <span className="font-mono text-sm">{s.name}</span>
+                {s.id === 4 && stage4Running && (
+                  <Badge variant="outline" className="border-signal-causal/40 text-signal-causal">
+                    <Cloud className="mr-1 h-3 w-3" /> cloud
+                  </Badge>
+                )}
               </div>
               <div className="flex items-center gap-2">
+                <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+                  {liveCompleteness}%
+                </span>
                 <Badge variant="outline" className={cfg.className}>
                   {cfg.label}
                 </Badge>
@@ -50,7 +67,7 @@ export function StageList({ showRestart = false }: { showRestart?: boolean }) {
                     size="sm"
                     variant="outline"
                     className="h-7 px-2 text-[11px]"
-                    disabled={busy === s.id}
+                    disabled={busy === s.id || !s.runnable && s.id !== 4}
                     onClick={() => restart(s.id, s.name)}
                   >
                     {busy === s.id ? (
@@ -65,6 +82,7 @@ export function StageList({ showRestart = false }: { showRestart?: boolean }) {
                 )}
               </div>
             </div>
+            <CompletenessBar value={liveCompleteness} className="mt-2" />
             <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{s.summary}</p>
             {s.artifacts.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1">

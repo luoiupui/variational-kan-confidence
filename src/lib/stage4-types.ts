@@ -14,6 +14,8 @@ export interface RealSequenceResult {
   trajectory_gt: [number, number, number][];
   /** Optional ORB-SLAM3 baseline trajectory (Step B). */
   trajectory_orb3?: [number, number, number][];
+  /** Optional DynaSLAM baseline trajectory (Step F). */
+  trajectory_dynaslam?: [number, number, number][];
   /** Optional ORB-SLAM3 sparse map points (Step B). */
   map_points?: { pos: [number, number, number]; weight?: number }[];
   /** Per-frame absolute trajectory error (m). Same length as trajectory_est. */
@@ -25,6 +27,7 @@ export interface RealSequenceResult {
   metrics: {
     vkan: SeqMetrics;
     orb3?: SeqMetrics;
+    dynaslam?: SeqMetrics;
   };
 }
 
