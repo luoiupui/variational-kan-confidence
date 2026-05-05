@@ -33,6 +33,7 @@ import {
   History,
   XCircle,
   AlertTriangle,
+  Layers,
 } from "lucide-react";
 import { useRuns, type RunMethod, type RunStatus } from "@/hooks/useRuns";
 import { useSequences } from "@/hooks/useSequences";
@@ -180,6 +181,79 @@ export function RunCenter() {
     }
   };
 
+  const enqueueMany = async (
+    items: { sequence_id: string; sequence_name: string; method: RunMethod }[],
+  ) => {
+    const results = await Promise.allSettled(
+      items.map((it) =>
+        supabase.functions.invoke("enqueue-run", {
+          body: { ...it, requested_by: "ui-batch" },
+        }),
+      ),
+    );
+    const ok = results.filter((r) => r.status === "fulfilled").length;
+    const fail = results.length - ok;
+    return { ok, fail };
+  };
+
+  const triggerAllThree = async () => {
+    const seq = sequences.find((s) => s.id === seqId);
+    if (!seq) {
+      toast({ title: "Pick a sequence first", variant: "destructive" });
+      return;
+    }
+    setBusy(true);
+    try {
+      const { ok, fail } = await enqueueMany(
+        (["vkan", "orb3", "dynaslam"] as RunMethod[]).map((m) => ({
+          sequence_id: seq.id,
+          sequence_name: seq.name,
+          method: m,
+        })),
+      );
+      toast({
+        title: `Queued ${ok}/3 methods · ${seq.name}`,
+        description: fail ? `${fail} failed — see console` : "vkan + orb3 + dynaslam enqueued",
+        variant: fail ? "destructive" : "default",
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const backfillAll = async () => {
+    // Skip (sequence, method) pairs that already have a 'done' or in-flight run.
+    const have = new Set<string>();
+    for (const r of runs) {
+      if (r.status === "done" || r.status === "running" || r.status === "queued") {
+        have.add(`${r.sequence_id}::${r.method}`);
+      }
+    }
+    const items: { sequence_id: string; sequence_name: string; method: RunMethod }[] = [];
+    for (const s of sequences) {
+      for (const m of ["vkan", "orb3", "dynaslam"] as RunMethod[]) {
+        if (have.has(`${s.id}::${m}`)) continue;
+        items.push({ sequence_id: s.id, sequence_name: s.name, method: m });
+      }
+    }
+    if (items.length === 0) {
+      toast({ title: "Nothing to backfill", description: "All (sequence × method) pairs already have a run." });
+      return;
+    }
+    if (!confirm(`Enqueue ${items.length} runs to fill the comparison matrix (${sequences.length} sequences × 3 methods)?`)) return;
+    setBusy(true);
+    try {
+      const { ok, fail } = await enqueueMany(items);
+      toast({
+        title: `Backfill: queued ${ok}/${items.length}`,
+        description: fail ? `${fail} failed — see console` : "Comparison matrix is filling up",
+        variant: fail ? "destructive" : "default",
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const counts = useMemo(() => {
     const c = { queued: 0, running: 0, done: 0, failed: 0 };
     for (const r of runs) c[r.status]++;
@@ -239,18 +313,35 @@ export function RunCenter() {
           </div>
         </div>
 
+        <div className="grid grid-cols-2 gap-2">
+          <Button onClick={trigger} disabled={busy || !seqId} size="sm">
+            {busy ? (
+              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+            ) : (
+              <Play className="mr-1 h-3 w-3" />
+            )}
+            Enqueue run
+          </Button>
+          <Button
+            onClick={triggerAllThree}
+            disabled={busy || !seqId}
+            size="sm"
+            variant="outline"
+            title="Queue V-KAN + ORB-SLAM3 + DynaSLAM on this sequence"
+          >
+            <Layers className="mr-1 h-3 w-3" />
+            Run all 3
+          </Button>
+        </div>
         <Button
-          onClick={trigger}
-          disabled={busy || !seqId}
-          className="w-full"
+          onClick={backfillAll}
+          disabled={busy || sequences.length === 0}
           size="sm"
+          variant="ghost"
+          className="w-full text-[11px]"
+          title="Enqueue every (sequence × method) pair that has no recent run"
         >
-          {busy ? (
-            <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-          ) : (
-            <Play className="mr-1 h-3 w-3" />
-          )}
-          Enqueue run
+          Backfill comparison matrix · {sequences.length} seq × 3
         </Button>
 
         <div className="flex items-center justify-between gap-2 border-t border-border pt-3">
