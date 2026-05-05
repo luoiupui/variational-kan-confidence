@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { Trajectory3D } from "@/components/vkan/Trajectory3D";
 import type { Stage4RealData } from "@/lib/stage4-types";
 import { GeomeanPanel } from "@/components/vkan/GeomeanPanel";
+import { StrengthWeaknessPanel } from "@/components/vkan/StrengthWeaknessPanel";
 
 interface SeqMetrics {
   ate_rmse: number;
@@ -181,6 +182,9 @@ const Stage4 = () => {
       <div className="mb-4">
         <GeomeanPanel />
       </div>
+      <div className="mb-4">
+        <StrengthWeaknessPanel />
+      </div>
 
       {realData && (
         <div className="space-y-4">
@@ -226,15 +230,25 @@ const Stage4 = () => {
                             },
                           ]
                         : []),
+                      ...(seq.trajectory_dynaslam
+                        ? [
+                            {
+                              name: "DynaSLAM",
+                              points: seq.trajectory_dynaslam,
+                              color: "hsl(305 80% 65%)",
+                            },
+                          ]
+                        : []),
                     ]}
                     mapPoints={seq.map_points}
                   />
                 </Panel>
                 <Panel title="Metrics" subtitle={`${seq.frames} frames`}>
-                  <div className="grid grid-cols-2 gap-2 text-[11px]">
-                    <div className="col-span-2 mb-1 grid grid-cols-2 gap-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <div className="grid grid-cols-3 gap-2 text-[11px]">
+                    <div className="col-span-3 mb-1 grid grid-cols-3 gap-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
                       <span className="text-signal-fe">v-kan</span>
                       <span className={o ? "text-signal-warn" : ""}>orb3</span>
+                      <span className={seq.metrics.dynaslam ? "text-accent" : ""}>dynaslam</span>
                     </div>
                     <Stat label="ATE-RMSE [m]" value={v.ate_rmse.toFixed(4)} accent="primary" />
                     <Stat
@@ -242,11 +256,21 @@ const Stage4 = () => {
                       value={o ? o.ate_rmse.toFixed(4) : "—"}
                       accent="warn"
                     />
+                    <Stat
+                      label="ATE-RMSE [m]"
+                      value={seq.metrics.dynaslam ? seq.metrics.dynaslam.ate_rmse.toFixed(4) : "—"}
+                      accent="accent"
+                    />
                     <Stat label="RPE-trans" value={v.rpe_trans.toFixed(4)} accent="primary" />
                     <Stat
                       label="RPE-trans"
                       value={o ? o.rpe_trans.toFixed(4) : "—"}
                       accent="warn"
+                    />
+                    <Stat
+                      label="RPE-trans"
+                      value={seq.metrics.dynaslam ? seq.metrics.dynaslam.rpe_trans.toFixed(4) : "—"}
+                      accent="accent"
                     />
                     <Stat
                       label="tracked %"
@@ -257,6 +281,11 @@ const Stage4 = () => {
                       label="tracked %"
                       value={o ? o.tracking_pct.toFixed(1) : "—"}
                       accent="warn"
+                    />
+                    <Stat
+                      label="tracked %"
+                      value={seq.metrics.dynaslam ? seq.metrics.dynaslam.tracking_pct.toFixed(1) : "—"}
+                      accent="accent"
                     />
                   </div>
                 </Panel>
