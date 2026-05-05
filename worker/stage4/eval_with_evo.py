@@ -81,6 +81,7 @@ def main():
     ap.add_argument("--vkan-json", required=True)
     ap.add_argument("--orb3-traj", help="Optional ORB-SLAM3 TUM trajectory")
     ap.add_argument("--orb3-map", help="Optional ORB-SLAM3 MapPoints file (xyz per line)")
+    ap.add_argument("--dynaslam-traj", help="Optional DynaSLAM TUM trajectory")
     ap.add_argument("--out", required=True, help="Final dashboard JSON")
     args = ap.parse_args()
 
@@ -153,6 +154,27 @@ def main():
                 if len(p) >= 3:
                     pts.append({"pos": [float(p[0]), float(p[1]), float(p[2])]})
         seq["map_points"] = pts
+
+    if args.dynaslam_traj and os.path.exists(args.dynaslam_traj):
+        print("[C] running evo_ape on DynaSLAM ...")
+        aped = _run_evo_ape(gt_tum, args.dynaslam_traj)
+        rped = _run_evo_rpe(gt_tum, args.dynaslam_traj)
+        seq["metrics"]["dynaslam"] = {
+            "ate_rmse": aped.get("rmse", 0.0),
+            "ate_mean": aped.get("mean", 0.0),
+            "ate_max": aped.get("max", 0.0),
+            "rpe_trans": rped.get("rmse", 0.0),
+            "rpe_rot": 0.0,
+            "tracking_pct": 0.0,
+        }
+        dyn_xyz = []
+        with open(args.dynaslam_traj) as f:
+            for line in f:
+                if line.strip().startswith("#") or not line.strip():
+                    continue
+                parts = line.split()
+                dyn_xyz.append([float(parts[1]), float(parts[2]), float(parts[3])])
+        seq["trajectory_dynaslam"] = dyn_xyz
 
     payload = {
         "status": "live",
