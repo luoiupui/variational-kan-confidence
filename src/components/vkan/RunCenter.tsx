@@ -265,6 +265,13 @@ export function RunCenter() {
     return c;
   }, [runs]);
 
+  const latest = runs[0];
+  const latestAgeMin = latest
+    ? Math.floor((Date.now() - new Date(latest.created_at).getTime()) / 60000)
+    : 0;
+  const workerStuck =
+    counts.queued > 0 && counts.running === 0 && counts.done === 0 && counts.failed === 0;
+
   const downloadLatestDocx = async () => {
     try {
       ingestRuns(runs as never);
@@ -407,6 +414,48 @@ export function RunCenter() {
             </Link>
           </Button>
         </div>
+
+        {latest && (
+          <div className="rounded border border-border bg-muted/20 p-2 font-mono text-[10px] leading-relaxed">
+            <div className="mb-1 uppercase tracking-wider text-muted-foreground">
+              latest run · {latestAgeMin}m ago
+            </div>
+            <div className="truncate">
+              <span className="text-muted-foreground">id</span> {latest.id.slice(0, 8)}…{" "}
+              <span className="text-muted-foreground">·</span> {latest.method.toUpperCase()}{" "}
+              <span className="text-muted-foreground">·</span> {latest.sequence_name}{" "}
+              <span className="text-muted-foreground">·</span>{" "}
+              <span
+                className={cn(
+                  latest.status === "queued" && "text-muted-foreground",
+                  latest.status === "running" && "text-signal-causal",
+                  latest.status === "done" && "text-signal-fe",
+                  latest.status === "failed" && "text-destructive",
+                )}
+              >
+                {latest.status}
+              </span>
+            </div>
+            <div className="mt-1 text-muted-foreground">
+              {latest.status === "queued" && "waiting for Fly worker to claim this job"}
+              {latest.status === "running" && "worker claimed — running on Fly"}
+              {latest.status === "done" && "DOCX report ready · Download .docx above"}
+              {latest.status === "failed" &&
+                `failed · ${(latest.error ?? "see worker logs").slice(0, 120)}`}
+            </div>
+          </div>
+        )}
+
+        {workerStuck && (
+          <div className="rounded border border-signal-warn/30 bg-signal-warn/5 p-2 text-[10px] text-signal-warn">
+            <AlertTriangle className="mr-1 inline h-3 w-3" />
+            {counts.queued} job{counts.queued !== 1 && "s"} queued but worker has not claimed any.
+            Check Fly: <span className="font-mono">fly logs -a worker-misty-butterfly-4770</span> ·
+            ensure <span className="font-mono">SUPABASE_DB_URL</span> +{" "}
+            <span className="font-mono">WORKER_INGEST_SECRET</span> are set and the poller is
+            running.
+          </div>
+        )}
 
         <div className="flex items-center justify-between gap-2 border-t border-border pt-3">
           <div className="flex flex-wrap items-center gap-1 text-[10px]">
