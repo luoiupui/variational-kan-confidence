@@ -9,8 +9,15 @@ import Experiments from "./pages/Experiments.tsx";
 import Config from "./pages/Config.tsx";
 import About from "./pages/About.tsx";
 import Stage4 from "./pages/Stage4.tsx";
+import Reports from "./pages/Reports.tsx";
+import { useAutoReport } from "@/hooks/useAutoReport";
 
 const queryClient = new QueryClient();
+
+const AutoLoggerMount = () => {
+  useAutoReport();
+  return null;
+};
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -18,10 +25,12 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
+        <AutoLoggerMount />
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/experiments" element={<Experiments />} />
           <Route path="/stage4" element={<Stage4 />} />
+          <Route path="/reports" element={<Reports />} />
           <Route path="/config" element={<Config />} />
           <Route path="/about" element={<About />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
