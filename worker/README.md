@@ -14,27 +14,23 @@ flyctl volumes create worker_data --size 20 --region ams \
     -a worker-misty-butterfly-4770
 
 # 2. set the two secrets the poller needs
-#    The poller no longer talks to Postgres directly — it calls the
-#    `claim-run` edge function. Only one secret is required:
+#    (WORKER_INGEST_SECRET is already set; only DB_URL is missing)
 flyctl secrets set \
-    WORKER_INGEST_SECRET="<same value as in Lovable Cloud>" \
+    SUPABASE_DB_URL="postgresql://postgres.oedetxrzmzshdqtyhakm:<DB_PASSWORD>@aws-0-<region>.pooler.supabase.com:6543/postgres" \
     -a worker-misty-butterfly-4770
-
-# Optional overrides:
-#   SUPABASE_FUNCTIONS_URL  (defaults to the project URL)
-#   DATA_ROOT               (defaults to /data)
 
 # 3. ship it
 flyctl deploy -a worker-misty-butterfly-4770
 ```
 
+Get the `SUPABASE_DB_URL` from Lovable Cloud → Connectors → Database
+(use the **session pooler** URL on port 6543, not 5432).
+
 ## Verify it's polling
 
 ```bash
 flyctl logs -a worker-misty-butterfly-4770
-# expect two lines:
-#   [poller] version=claim-run-no-db
-#   [poller] starting · ingest=https://.../ingest-run data=/data
+# expect:  [poller] starting · ingest=https://.../ingest-run data=/data
 ```
 
 Then trigger a run from the dashboard's **Run Center** and watch the same
@@ -44,7 +40,7 @@ log stream show `[poller] claim …` → `[poller] done …`.
 
 ```
 worker/
-├── Dockerfile          # python:3.11-slim + httpx/numpy/evo
+├── Dockerfile          # python:3.11-slim + asyncpg/httpx/numpy/evo
 ├── fly.toml            # no [http_service] → silences port-8080 warning
 ├── requirements.txt
 ├── .dockerignore
@@ -61,6 +57,6 @@ worker/
 
 The earlier `flyctl secrets set` warning ("app is not listening on
 0.0.0.0:8080") came from the default `[http_service]` block. This worker
-has no HTTP surface — it only **outbounds** to the `claim-run` and
-`ingest-run` edge functions — so we removed the block entirely. Fly
-will keep the machine alive based on the `[processes]` entry instead.
+has no HTTP surface — it only **outbounds** to Postgres and the
+`ingest-run` edge function — so we removed the block entirely. Fly will
+keep the machine alive based on the `[processes]` entry instead.
