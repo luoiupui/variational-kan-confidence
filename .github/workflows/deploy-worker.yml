@@ -1,0 +1,31 @@
+name: Deploy Fly.io worker
+
+# Auto-deploys worker/ to Fly.io whenever Lovable (or you) pushes
+# changes to main that touch the worker folder. This removes the need
+# to mirror files to your local PC and run `fly deploy` by hand.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'worker/**'
+      - '.github/workflows/deploy-worker.yml'
+  workflow_dispatch:  # lets you trigger manually from the Actions tab
+
+jobs:
+  deploy:
+    name: flyctl deploy
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-worker
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy worker to Fly.io
+        working-directory: worker
+        run: flyctl deploy --remote-only --config fly.toml --app worker-misty-butterfly-4770
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
