@@ -173,7 +173,7 @@ export function RunCenter() {
       if (error) throw error;
       toast({
         title: `Queued · ${seq.name}`,
-        description: `${method.toUpperCase()} run id ${(data as { id: string }).id.slice(0, 8)}…`,
+        description: `${method.toUpperCase()} · id ${(data as { id: string }).id.slice(0, 8)}… · status=queued. DOCX available after Fly worker marks it done/failed.`,
       });
     } catch (e) {
       toast({
@@ -271,9 +271,12 @@ export function RunCenter() {
       const vols = getVolumes();
       const latest = vols[vols.length - 1];
       if (!latest || latest.entries.length === 0) {
+        const hasPending = runs.some((r) => r.status === "queued" || r.status === "running");
         toast({
-          title: "No report data yet",
-          description: "Complete at least one run to generate a DOCX report.",
+          title: hasPending ? "Waiting for worker" : "No runs yet",
+          description: hasPending
+            ? "Runs are queued/running. DOCX becomes available once the Fly worker marks a run done or failed."
+            : "Enqueue a run first — the DOCX report is built from completed runs.",
           variant: "destructive",
         });
         return;
