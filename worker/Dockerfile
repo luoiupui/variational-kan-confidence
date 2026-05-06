@@ -16,10 +16,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY worker/requirements.txt /app/worker/requirements.txt
+COPY requirements.txt /app/worker/requirements.txt
 RUN pip install -r /app/worker/requirements.txt
 
-COPY worker /app/worker
+COPY . /app/worker
 
 # Default data root (override with DATA_ROOT env or a Fly volume mount).
 ENV DATA_ROOT=/data
