@@ -40,23 +40,24 @@ WORKER_INGEST_SECRET=…`.
 ## Worker-side polling (intent-based trigger)
 
 The UI marks intent by inserting a `status='queued'` row via the
-`enqueue-run` function. The worker polls for the next queued row using a
-read-only direct Postgres connection (psql / asyncpg) with the
-`SUPABASE_DB_URL` injected by Fly.
+`enqueue-run` function. The worker polls for the next queued row by
+POSTing to the `claim-run` edge function (same `x-worker-secret` auth as
+`ingest-run`). No direct Postgres connection or `SUPABASE_DB_URL` is
+needed on the worker.
 
-```python
-import os, asyncpg, asyncio
-
-async def claim_next():
-    conn = await asyncpg.connect(os.environ["SUPABASE_DB_URL"])
-    row = await conn.fetchrow("""
-        SELECT id, sequence_id, sequence_name, method
-        FROM runs WHERE status = 'queued'
-        ORDER BY created_at ASC LIMIT 1
-    """)
-    await conn.close()
-    return row
 ```
+POST https://oedetxrzmzshdqtyhakm.supabase.co/functions/v1/claim-run
+Headers:
+    x-worker-secret: $WORKER_INGEST_SECRET
+
+Response (queue non-empty):
+    { "id": "<uuid>", "sequence_id": "...", "sequence_name": "...", "method": "vkan" }
+Response (queue empty):
+    { "id": null }
+```
+
+The function atomically flips the claimed row to `status='running'` so two
+workers never grab the same job.
 
 Then the worker:
 1. POSTs `ingest-run` with `run_id=<uuid>`, `status="running"` → marks claim.
