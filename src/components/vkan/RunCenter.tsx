@@ -40,6 +40,11 @@ import { useSequences } from "@/hooks/useSequences";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import { Link } from "react-router-dom";
+import { getVolumes, ingestRuns } from "@/lib/reportLog";
+import { downloadVolume, buildVolumeDocx } from "@/lib/reportDocx";
+import { saveAs } from "file-saver";
+import { FileText } from "lucide-react";
 
 const METHODS: { id: RunMethod; label: string; cls: string }[] = [
   { id: "vkan", label: "V-KAN", cls: "border-signal-fe/40 text-signal-fe" },
@@ -260,6 +265,43 @@ export function RunCenter() {
     return c;
   }, [runs]);
 
+  const downloadLatestDocx = async () => {
+    try {
+      ingestRuns(runs as never);
+      const vols = getVolumes();
+      const latest = vols[vols.length - 1];
+      if (!latest || latest.entries.length === 0) {
+        toast({
+          title: "No report data yet",
+          description: "Complete at least one run to generate a DOCX report.",
+          variant: "destructive",
+        });
+        return;
+      }
+      await downloadVolume(latest);
+      toast({ title: `Downloaded vol${String(latest.id).padStart(2, "0")}.docx` });
+    } catch (e) {
+      toast({ title: "DOCX export failed", description: String((e as Error).message ?? e), variant: "destructive" });
+    }
+  };
+
+  const downloadFilteredDocx = async () => {
+    try {
+      ingestRuns(filtered as never);
+      const vols = getVolumes();
+      const latest = vols[vols.length - 1];
+      if (!latest || latest.entries.length === 0) {
+        toast({ title: "Nothing to export", variant: "destructive" });
+        return;
+      }
+      const blob = await buildVolumeDocx(latest);
+      saveAs(blob, `vkan_runs_${methodFilter}.docx`);
+      toast({ title: "DOCX downloaded" });
+    } catch (e) {
+      toast({ title: "DOCX export failed", description: String((e as Error).message ?? e), variant: "destructive" });
+    }
+  };
+
   return (
     <Panel
       title="Run Center · Cloud"
@@ -344,6 +386,25 @@ export function RunCenter() {
           Backfill comparison matrix · {sequences.length} seq × 3
         </Button>
 
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            onClick={downloadLatestDocx}
+            size="sm"
+            variant="outline"
+            className="h-7 text-[11px]"
+            title="Download latest auto-generated technical report (DOCX)"
+          >
+            <Download className="mr-1 h-3 w-3" />
+            Download .docx
+          </Button>
+          <Button asChild size="sm" variant="ghost" className="h-7 text-[11px]">
+            <Link to="/reports">
+              <FileText className="mr-1 h-3 w-3" />
+              Reports page
+            </Link>
+          </Button>
+        </div>
+
         <div className="flex items-center justify-between gap-2 border-t border-border pt-3">
           <div className="flex flex-wrap items-center gap-1 text-[10px]">
             <Badge variant="outline" className="border-border text-muted-foreground">
@@ -408,6 +469,15 @@ export function RunCenter() {
                   >
                     <Download className="mr-1 h-3 w-3" />
                     LaTeX
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 px-2 text-[10px]"
+                    onClick={downloadFilteredDocx}
+                  >
+                    <Download className="mr-1 h-3 w-3" />
+                    DOCX
                   </Button>
                 </div>
               </div>
