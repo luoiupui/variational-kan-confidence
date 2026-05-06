@@ -12,6 +12,12 @@ primary_region = "sin"
 [processes]
   worker = "python -u worker/stage4/poller.py"
 
+# Restart the machine if the poller exits for any reason. Without this
+# block Fly leaves a crashed machine in `stopped` state forever.
+[restart]
+  policy = "always"
+  max_retries = 10
+
 [[mounts]]
   source      = "tum_data"
   destination = "/data"
