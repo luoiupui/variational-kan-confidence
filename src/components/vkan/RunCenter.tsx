@@ -466,16 +466,51 @@ export function RunCenter() {
           </div>
         )}
 
-        {workerStuck && (
-          <div className="rounded border border-signal-warn/30 bg-signal-warn/5 p-2 text-[10px] text-signal-warn">
-            <AlertTriangle className="mr-1 inline h-3 w-3" />
-            {counts.queued} job{counts.queued !== 1 && "s"} queued but worker has not claimed any.
-            Check Fly: <span className="font-mono">fly logs -a worker-misty-butterfly-4770</span> ·
-            ensure <span className="font-mono">SUPABASE_DB_URL</span> +{" "}
-            <span className="font-mono">WORKER_INGEST_SECRET</span> are set and the poller is
-            running.
+        <div className="rounded border border-border bg-muted/20 p-2 font-mono text-[10px] leading-relaxed">
+          <div className="mb-1 flex items-center justify-between">
+            <span className="uppercase tracking-wider text-muted-foreground">
+              worker health
+            </span>
+            <Badge variant="outline" className={healthBadge.cls}>
+              {healthBadge.label}
+            </Badge>
           </div>
-        )}
+          <div className="text-muted-foreground">
+            last ingest:{" "}
+            <span className="text-foreground">{lastIngestLabel}</span>
+            {health?.last_method && (
+              <>
+                {" · "}
+                {health.last_method.toUpperCase()} → {health.last_status}
+              </>
+            )}
+          </div>
+          {health && health.health === "down" && counts.queued > 0 && (
+            <div className="mt-2 rounded border border-destructive/30 bg-destructive/5 p-2 text-destructive">
+              <AlertTriangle className="mr-1 inline h-3 w-3" />
+              Worker has never called <span className="font-mono">ingest-run</span>. The Fly
+              machine is likely running the wrong image (e.g. logs say{" "}
+              <span className="font-mono">Worker heartbeat...</span> instead of{" "}
+              <span className="font-mono">[poller] starting</span>). From the repo{" "}
+              <span className="font-mono">worker/</span> directory run:
+              <div className="mt-1 rounded bg-background/60 p-1 text-foreground">
+                fly deploy -a worker-misty-butterfly-4770
+              </div>
+            </div>
+          )}
+          {health && health.health === "stale" && (
+            <div className="mt-2 rounded border border-signal-warn/30 bg-signal-warn/5 p-2 text-signal-warn">
+              <AlertTriangle className="mr-1 inline h-3 w-3" />
+              Worker last responded {lastIngestLabel}. Check{" "}
+              <span className="font-mono">fly logs -a worker-misty-butterfly-4770</span>.
+            </div>
+          )}
+          {health && health.health === "healthy" && counts.queued > 0 && (
+            <div className="mt-1 text-signal-fe">
+              Worker is processing — {counts.queued} queued, {counts.running} running.
+            </div>
+          )}
+        </div>
 
         <div className="flex items-center justify-between gap-2 border-t border-border pt-3">
           <div className="flex flex-wrap items-center gap-1 text-[10px]">
