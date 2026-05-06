@@ -2,14 +2,15 @@
 Stage 4 · Worker poller.
 
 Long-running loop on the Fly machine. Every 5 s:
-  1. Asks Postgres for the oldest `runs` row with status='queued'.
-  2. Marks it 'running' via the ingest-run edge function.
+  1. Calls the `claim-run` edge function which atomically picks the oldest
+     `runs` row with status='queued' and flips it to 'running'.
+  2. (Re-)marks it 'running' via the ingest-run edge function (idempotent,
+     keeps the existing ingest contract / heartbeat behaviour intact).
   3. Dispatches to the right runner (V-KAN / ORB-SLAM3 / DynaSLAM).
   4. Parses the result JSON written by eval_with_evo.py.
   5. POSTs the final payload back to ingest-run with status='done' (or 'failed').
 
 Env vars (set via `flyctl secrets set`):
-  SUPABASE_DB_URL          — direct Postgres URL for polling
   WORKER_INGEST_SECRET     — shared secret for the ingest-run function
   SUPABASE_FUNCTIONS_URL   — optional override, defaults to project URL
   DATA_ROOT                — where TUM sequences live, default /data
@@ -23,31 +24,31 @@ import sys
 import traceback
 from pathlib import Path
 
-import asyncpg
 import httpx
 
-DB_URL = os.environ["SUPABASE_DB_URL"]
 SECRET = os.environ["WORKER_INGEST_SECRET"]
 FUNCTIONS_URL = os.environ.get(
     "SUPABASE_FUNCTIONS_URL",
     "https://oedetxrzmzshdqtyhakm.supabase.co/functions/v1",
 )
 INGEST_URL = f"{FUNCTIONS_URL}/ingest-run"
+CLAIM_URL = f"{FUNCTIONS_URL}/claim-run"
 DATA_ROOT = Path(os.environ.get("DATA_ROOT", "/data"))
 POLL_INTERVAL = float(os.environ.get("POLL_INTERVAL", "5"))
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 
-async def claim_next(conn: asyncpg.Connection):
-    return await conn.fetchrow(
-        """
-        SELECT id, sequence_id, sequence_name, method
-        FROM runs
-        WHERE status = 'queued'
-        ORDER BY created_at ASC
-        LIMIT 1
-        """
+async def claim_next(client: httpx.AsyncClient):
+    r = await client.post(
+        CLAIM_URL,
+        headers={"x-worker-secret": SECRET, "content-type": "application/json"},
+        timeout=30,
     )
+    r.raise_for_status()
+    data = r.json()
+    if not data.get("id"):
+        return None
+    return data
 
 
 async def post_ingest(client: httpx.AsyncClient, payload: dict) -> None:
@@ -118,7 +119,7 @@ def build_payload(run_id: str, row, final_json: Path) -> dict:
     }
 
 
-async def process(conn, client, row) -> None:
+async def process(client, row) -> None:
     run_id = str(row["id"])
     base = {
         "run_id": run_id,
@@ -142,19 +143,17 @@ async def process(conn, client, row) -> None:
 
 async def main() -> None:
     print(f"[poller] starting · ingest={INGEST_URL} data={DATA_ROOT}", flush=True)
-    while True:
-        try:
-            conn = await asyncpg.connect(DB_URL)
-            async with httpx.AsyncClient() as client:
-                while True:
-                    row = await claim_next(conn)
-                    if row is None:
-                        await asyncio.sleep(POLL_INTERVAL)
-                        continue
-                    await process(conn, client, row)
-        except Exception as e:
-            print(f"[poller] loop error: {e!r}; reconnecting in 10s", flush=True)
-            await asyncio.sleep(10)
+    async with httpx.AsyncClient() as client:
+        while True:
+            try:
+                row = await claim_next(client)
+                if row is None:
+                    await asyncio.sleep(POLL_INTERVAL)
+                    continue
+                await process(client, row)
+            except Exception as e:
+                print(f"[poller] loop error: {e!r}; retrying in 10s", flush=True)
+                await asyncio.sleep(10)
 
 
 if __name__ == "__main__":
