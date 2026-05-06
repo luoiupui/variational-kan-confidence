@@ -1,94 +1,73 @@
-I checked the app-side data and recent requests. The Dashboard operation is working: `enqueue-run` returned HTTP 200 and inserted new rows. The current blocker is after enqueue: the worker is not consuming the queue.
+## Root cause
 
-Current evidence:
-- The database currently has `42` runs and all are `queued`.
-- Recent `Enqueue run` / `Run all 3` requests succeeded and created run IDs.
-- There are no recent `ingest-run` backend-function logs. If the Fly worker had claimed even one job, it would call `ingest-run` to mark it `running`, then `done` or `failed`.
-- Your `fly status` only proves the Fly machine is started; it does not prove the Python poller is connected to the correct backend and consuming jobs.
-- Your Fly output does not match the repo config exactly: repo config expects process `worker`, region `ams`, volume `worker_data`; your output shows process `app`, region `sin`, volume `tum_data`. That mismatch may be okay if you intentionally changed it, but it is a strong sign the running Fly app may not be the same/current worker config.
+Fly machine `worker-misty-butterfly-4770` is running the **wrong image**. Its logs print `Worker heartbeat...`, but the poller in this repo (`worker/stage4/poller.py`) only ever prints `[poller] starting`, `[poller] claim`, `[poller] done`, `[poller] FAIL`. The string `Worker heartbeat` does not exist anywhere in `worker/`. So the live container is some older placeholder that never queries Postgres and never calls `ingest-run` — which is why all 42 queued rows stay queued even though Fly says the app is "started" and the secrets are set.
 
-Correct run lifecycle:
+Config also drifted: repo `fly.toml` uses process `worker`, region `ams`, volume `worker_data`; the live machine uses process `app`, region `sin`, volume `tum_data`.
 
-```text
-Dashboard: pick TUM sequence
-  -> choose V-KAN or Run all 3
-  -> Enqueue run
-  -> row inserted with status = queued
+## Plan
 
-Fly worker poller:
-  -> polls Lovable Cloud for oldest queued row
-  -> calls ingest-run to mark status = running
-  -> runs V-KAN / ORB3 / DynaSLAM
-  -> calls ingest-run to mark status = done or failed
+### 1. Fix `worker/fly.toml` to match the existing Fly machine
+- Change `primary_region` to `sin`.
+- Change the mount `source` to `tum_data` so we reuse the existing volume with TUM data.
+- Keep process name `worker` (this is what gets redeployed; Fly will replace the old `app` process on next deploy).
 
-Report system:
-  -> only logs done/failed rows
-  -> DOCX becomes downloadable after at least one done/failed row exists
+### 2. Add a real worker-heartbeat probe (backend)
+Migration:
+```sql
+create table public.worker_heartbeats (
+  id text primary key default 'singleton',
+  last_ingest_at timestamptz not null default now(),
+  last_run_id uuid,
+  last_method text,
+  last_status text
+);
+alter table public.worker_heartbeats enable row level security;
+create policy "anyone can read heartbeat"
+  on public.worker_heartbeats for select using (true);
+```
+Modify `supabase/functions/ingest-run/index.ts`: on every successful request, upsert the singleton row with `last_ingest_at=now()`, `last_run_id`, `last_method`, `last_status`.
+
+New edge function `worker-health` (public, no JWT) returns:
+```json
+{
+  "last_ingest_at": "...",
+  "seconds_since_ingest": 12,
+  "queued": 42,
+  "running": 0,
+  "done_24h": 0,
+  "failed_24h": 0,
+  "oldest_queued_age_s": 3600
+}
 ```
 
-So `No report data yet` is not an operation error. It means there are no finished rows yet.
+### 3. Dashboard changes (`src/components/vkan/RunCenter.tsx`)
+- New `useWorkerHealth` hook polling `worker-health` every 10 s.
+- Add a **Worker health** row with a badge:
+  - `Healthy` — heartbeat < 2 min
+  - `Stale` — 2–10 min
+  - `Down` — > 10 min or never
+- Replace the current "stuck" banner with a precise message:
+  - **Down + queued > 0**: "Fly machine may be running the wrong image. From `worker/` run `fly deploy -a worker-misty-butterfly-4770`. Logs should print `[poller] starting` not `Worker heartbeat...`."
+  - **Stale**: "Worker last responded N minutes ago — check `fly logs`."
+  - **Healthy + queued > 0**: "Worker is processing — refresh in a moment."
 
-Recommended local Fly checks before changing code:
-
-```bash
-fly logs -a worker-misty-butterfly-4770
+### 4. User actions on Windows (you run these after I deploy)
+```powershell
+cd worker
+fly deploy -a worker-misty-butterfly-4770
+fly logs   -a worker-misty-butterfly-4770
 ```
-
-Expected healthy lines:
-
-```text
-[poller] starting · ingest=... data=/data
-[poller] claim <run_id> <method> <sequence_id>
-[poller] done <run_id>
+Expected first line within ~10 s:
 ```
-
-If logs show loop errors, check secrets:
-
-```bash
-fly secrets list -a worker-misty-butterfly-4770
+[poller] starting · ingest=https://oedetxrzmzshdqtyhakm.supabase.co/functions/v1/ingest-run data=/data
 ```
+Then the Dashboard's Worker health badge turns green within a minute and the 42 queued rows start draining.
 
-The worker must have:
-
-```text
-SUPABASE_DB_URL
-WORKER_INGEST_SECRET
-```
-
-Also verify it is polling the same backend as this Lovable project, not an old/other database URL.
-
-Implementation plan to make the Dashboard clearer:
-
-1. Improve Run Center status display
-   - Add a compact worker/queue status panel under the enqueue buttons.
-   - Show counts for `queued`, `running`, `done`, and `failed` more explicitly.
-   - Add a warning when queued jobs exist but no running/done/failed jobs are detected, e.g. “Worker has not claimed queued jobs yet.”
-
-2. Improve enqueue feedback
-   - After `Enqueue run`, show the created run ID and status `queued`.
-   - Add a short explanation that DOCX is only available after the worker changes a run to `done` or `failed`.
-   - Keep the Download DOCX button visible, but disable or explain it when there are no reportable runs.
-
-3. Add a “latest run” diagnostic row
-   - Show the most recent run ID, method, sequence, status, and age.
-   - If the latest run remains `queued`, display “waiting for Fly worker”.
-   - If it becomes `running`, display “worker claimed run”.
-   - If it becomes `done`, display “DOCX ready”.
-   - If it becomes `failed`, show the stored error preview.
-
-4. Fix DOCX empty-state messaging
-   - Replace “No report data yet” with a more precise message:
-     - `Queued/running only: report will be available after a run finishes.`
-     - `No runs: enqueue a run first.`
-     - `Failed/done exists but not logged: sync report log and retry.`
-
-5. Optional worker config documentation update
-   - Update the worker README/checklist to match the actual Fly setup or highlight the expected config.
-   - Include commands for checking logs, secrets, process name, volume mount, and data path.
-
-After this, the Dashboard will make it obvious whether the problem is:
-- enqueue failed,
-- jobs are queued but worker is not claiming them,
-- worker is running a job,
-- worker finished and DOCX is ready,
-- or worker failed and an error is available.
+## Files to change
+- `worker/fly.toml` — region/volume fix
+- `supabase/functions/ingest-run/index.ts` — heartbeat upsert
+- `supabase/functions/worker-health/index.ts` — new
+- `supabase/config.toml` — register `worker-health` with `verify_jwt = false`
+- new migration — `worker_heartbeats` table + RLS
+- `src/hooks/useWorkerHealth.ts` — new
+- `src/components/vkan/RunCenter.tsx` — health badge + clearer guidance

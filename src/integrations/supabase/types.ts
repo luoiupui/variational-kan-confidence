@@ -116,6 +116,30 @@ export type Database = {
         }
         Relationships: []
       }
+      worker_heartbeats: {
+        Row: {
+          id: string
+          last_ingest_at: string
+          last_method: string | null
+          last_run_id: string | null
+          last_status: string | null
+        }
+        Insert: {
+          id?: string
+          last_ingest_at?: string
+          last_method?: string | null
+          last_run_id?: string | null
+          last_status?: string | null
+        }
+        Update: {
+          id?: string
+          last_ingest_at?: string
+          last_method?: string | null
+          last_run_id?: string | null
+          last_status?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
