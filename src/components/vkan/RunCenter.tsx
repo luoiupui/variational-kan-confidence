@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { useRuns, type RunMethod, type RunStatus } from "@/hooks/useRuns";
 import { useSequences } from "@/hooks/useSequences";
+import { useWorkerHealth } from "@/hooks/useWorkerHealth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
@@ -142,6 +143,7 @@ function download(filename: string, content: string, mime: string) {
 export function RunCenter() {
   const { sequences, error: seqError } = useSequences();
   const { runs, error: runsError, loading } = useRuns(50);
+  const { health } = useWorkerHealth(10000);
   const { toast } = useToast();
 
   const [seqId, setSeqId] = useState<string>("");
@@ -271,6 +273,24 @@ export function RunCenter() {
     : 0;
   const workerStuck =
     counts.queued > 0 && counts.running === 0 && counts.done === 0 && counts.failed === 0;
+
+  const healthBadge = (() => {
+    if (!health) return { cls: "border-border text-muted-foreground", label: "checking…" };
+    if (health.health === "healthy")
+      return { cls: "border-signal-fe/40 text-signal-fe", label: "healthy" };
+    if (health.health === "stale")
+      return { cls: "border-signal-warn/40 text-signal-warn", label: "stale" };
+    return { cls: "border-destructive/40 text-destructive", label: "down" };
+  })();
+
+  const lastIngestLabel = (() => {
+    if (!health) return "checking…";
+    if (health.seconds_since_ingest === null) return "never";
+    const s = health.seconds_since_ingest;
+    if (s < 60) return `${s}s ago`;
+    if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+    return `${Math.floor(s / 3600)}h ago`;
+  })();
 
   const downloadLatestDocx = async () => {
     try {
