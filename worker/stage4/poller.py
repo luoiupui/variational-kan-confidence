@@ -142,6 +142,7 @@ async def process(client, row) -> None:
 
 
 async def main() -> None:
+    print("[poller] version=claim-run-no-db", flush=True)
     print(f"[poller] starting · ingest={INGEST_URL} data={DATA_ROOT}", flush=True)
     async with httpx.AsyncClient() as client:
         while True:
