@@ -1,11 +1,12 @@
 import { NavLink } from "react-router-dom";
-import { Activity, FlaskConical, Settings, Info, GitCompare } from "lucide-react";
+import { Activity, FlaskConical, Settings, Info, GitCompare, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const links = [
   { to: "/", label: "Dashboard", icon: Activity },
   { to: "/experiments", label: "Experiments", icon: FlaskConical },
   { to: "/stage4", label: "Stage 4 · Baseline", icon: GitCompare },
+  { to: "/reports", label: "Reports", icon: FileText },
   { to: "/config", label: "Configuration", icon: Settings },
   { to: "/about", label: "About", icon: Info },
 ];
