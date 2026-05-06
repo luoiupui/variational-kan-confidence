@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { useRuns, type RunMethod, type RunStatus } from "@/hooks/useRuns";
 import { useSequences } from "@/hooks/useSequences";
+import { useWorkerHealth } from "@/hooks/useWorkerHealth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
@@ -142,6 +143,7 @@ function download(filename: string, content: string, mime: string) {
 export function RunCenter() {
   const { sequences, error: seqError } = useSequences();
   const { runs, error: runsError, loading } = useRuns(50);
+  const { health } = useWorkerHealth(10000);
   const { toast } = useToast();
 
   const [seqId, setSeqId] = useState<string>("");
@@ -271,6 +273,24 @@ export function RunCenter() {
     : 0;
   const workerStuck =
     counts.queued > 0 && counts.running === 0 && counts.done === 0 && counts.failed === 0;
+
+  const healthBadge = (() => {
+    if (!health) return { cls: "border-border text-muted-foreground", label: "checking…" };
+    if (health.health === "healthy")
+      return { cls: "border-signal-fe/40 text-signal-fe", label: "healthy" };
+    if (health.health === "stale")
+      return { cls: "border-signal-warn/40 text-signal-warn", label: "stale" };
+    return { cls: "border-destructive/40 text-destructive", label: "down" };
+  })();
+
+  const lastIngestLabel = (() => {
+    if (!health) return "checking…";
+    if (health.seconds_since_ingest === null) return "never";
+    const s = health.seconds_since_ingest;
+    if (s < 60) return `${s}s ago`;
+    if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+    return `${Math.floor(s / 3600)}h ago`;
+  })();
 
   const downloadLatestDocx = async () => {
     try {
@@ -446,16 +466,51 @@ export function RunCenter() {
           </div>
         )}
 
-        {workerStuck && (
-          <div className="rounded border border-signal-warn/30 bg-signal-warn/5 p-2 text-[10px] text-signal-warn">
-            <AlertTriangle className="mr-1 inline h-3 w-3" />
-            {counts.queued} job{counts.queued !== 1 && "s"} queued but worker has not claimed any.
-            Check Fly: <span className="font-mono">fly logs -a worker-misty-butterfly-4770</span> ·
-            ensure <span className="font-mono">SUPABASE_DB_URL</span> +{" "}
-            <span className="font-mono">WORKER_INGEST_SECRET</span> are set and the poller is
-            running.
+        <div className="rounded border border-border bg-muted/20 p-2 font-mono text-[10px] leading-relaxed">
+          <div className="mb-1 flex items-center justify-between">
+            <span className="uppercase tracking-wider text-muted-foreground">
+              worker health
+            </span>
+            <Badge variant="outline" className={healthBadge.cls}>
+              {healthBadge.label}
+            </Badge>
           </div>
-        )}
+          <div className="text-muted-foreground">
+            last ingest:{" "}
+            <span className="text-foreground">{lastIngestLabel}</span>
+            {health?.last_method && (
+              <>
+                {" · "}
+                {health.last_method.toUpperCase()} → {health.last_status}
+              </>
+            )}
+          </div>
+          {health && health.health === "down" && counts.queued > 0 && (
+            <div className="mt-2 rounded border border-destructive/30 bg-destructive/5 p-2 text-destructive">
+              <AlertTriangle className="mr-1 inline h-3 w-3" />
+              Worker has never called <span className="font-mono">ingest-run</span>. The Fly
+              machine is likely running the wrong image (e.g. logs say{" "}
+              <span className="font-mono">Worker heartbeat...</span> instead of{" "}
+              <span className="font-mono">[poller] starting</span>). From the repo{" "}
+              <span className="font-mono">worker/</span> directory run:
+              <div className="mt-1 rounded bg-background/60 p-1 text-foreground">
+                fly deploy -a worker-misty-butterfly-4770
+              </div>
+            </div>
+          )}
+          {health && health.health === "stale" && (
+            <div className="mt-2 rounded border border-signal-warn/30 bg-signal-warn/5 p-2 text-signal-warn">
+              <AlertTriangle className="mr-1 inline h-3 w-3" />
+              Worker last responded {lastIngestLabel}. Check{" "}
+              <span className="font-mono">fly logs -a worker-misty-butterfly-4770</span>.
+            </div>
+          )}
+          {health && health.health === "healthy" && counts.queued > 0 && (
+            <div className="mt-1 text-signal-fe">
+              Worker is processing — {counts.queued} queued, {counts.running} running.
+            </div>
+          )}
+        </div>
 
         <div className="flex items-center justify-between gap-2 border-t border-border pt-3">
           <div className="flex flex-wrap items-center gap-1 text-[10px]">

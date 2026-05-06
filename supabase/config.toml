@@ -1,1 +1,4 @@
 project_id = "oedetxrzmzshdqtyhakm"
+
+[functions.worker-health]
+verify_jwt = false

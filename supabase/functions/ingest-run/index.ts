@@ -106,6 +106,7 @@ Deno.serve(async (req) => {
       .select("id")
       .single();
     if (error) return json({ error: error.message }, 500);
+    await heartbeat(supabase, data.id, b.method, b.status);
     return json({ ok: true, id: data.id, mode: "update" });
   }
 
@@ -115,8 +116,30 @@ Deno.serve(async (req) => {
     .select("id")
     .single();
   if (error) return json({ error: error.message }, 500);
+  await heartbeat(supabase, data.id, b.method, b.status);
   return json({ ok: true, id: data.id, mode: "insert" });
 });
+
+async function heartbeat(
+  supabase: ReturnType<typeof createClient>,
+  runId: string,
+  method: string,
+  status: string,
+) {
+  try {
+    await supabase
+      .from("worker_heartbeats")
+      .upsert({
+        id: "singleton",
+        last_ingest_at: new Date().toISOString(),
+        last_run_id: runId,
+        last_method: method,
+        last_status: status,
+      });
+  } catch (e) {
+    console.error("heartbeat upsert failed", e);
+  }
+}
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {

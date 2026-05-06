@@ -4,7 +4,7 @@
 # 0.0.0.0:8080" warning you saw after `flyctl secrets set`.
 
 app = "worker-misty-butterfly-4770"
-primary_region = "ams"
+primary_region = "sin"
 
 [build]
   dockerfile = "Dockerfile"
@@ -13,7 +13,7 @@ primary_region = "ams"
   worker = "python -u worker/stage4/poller.py"
 
 [[mounts]]
-  source      = "worker_data"
+  source      = "tum_data"
   destination = "/data"
 
 [[vm]]
