@@ -71,7 +71,7 @@ export function CameraPanel({
       right={
         <div className="flex items-center gap-2">
           {!cam.active ? (
-            <Button size="sm" onClick={cam.start}>Enable camera</Button>
+            <Button size="sm" onClick={() => cam.start()}>Enable camera</Button>
           ) : (
             <Button size="sm" variant="secondary" onClick={() => { setStreaming(false); cam.stop(); }}>
               Disable
