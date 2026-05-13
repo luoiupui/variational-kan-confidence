@@ -14,6 +14,83 @@ export type Database = {
   }
   public: {
     Tables: {
+      agent_decisions: {
+        Row: {
+          arm_cmd: string | null
+          context: string | null
+          frame_id: string | null
+          id: string
+          latency_ms: number | null
+          model_version: string | null
+          nav_cmd: string | null
+          raw_output: string | null
+          target_id: string | null
+          ts: string
+        }
+        Insert: {
+          arm_cmd?: string | null
+          context?: string | null
+          frame_id?: string | null
+          id?: string
+          latency_ms?: number | null
+          model_version?: string | null
+          nav_cmd?: string | null
+          raw_output?: string | null
+          target_id?: string | null
+          ts?: string
+        }
+        Update: {
+          arm_cmd?: string | null
+          context?: string | null
+          frame_id?: string | null
+          id?: string
+          latency_ms?: number | null
+          model_version?: string | null
+          nav_cmd?: string | null
+          raw_output?: string | null
+          target_id?: string | null
+          ts?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_decisions_frame_id_fkey"
+            columns: ["frame_id"]
+            isOneToOne: false
+            referencedRelation: "frames"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      frames: {
+        Row: {
+          height: number
+          id: string
+          sequence_id: string | null
+          storage_path: string
+          tag: string | null
+          ts: string
+          width: number
+        }
+        Insert: {
+          height: number
+          id?: string
+          sequence_id?: string | null
+          storage_path: string
+          tag?: string | null
+          ts?: string
+          width: number
+        }
+        Update: {
+          height?: number
+          id?: string
+          sequence_id?: string | null
+          storage_path?: string
+          tag?: string | null
+          ts?: string
+          width?: number
+        }
+        Relationships: []
+      }
       runs: {
         Row: {
           ate_per_frame: Json | null
