@@ -16,20 +16,44 @@ export function useCamera({ width = 320, height = 240, fps = 2, quality = 0.6 }:
 
   const start = useCallback(async () => {
     setError(null);
+    const tryGet = (constraints: MediaStreamConstraints) =>
+      navigator.mediaDevices.getUserMedia(constraints);
+    let s: MediaStream | null = null;
     try {
-      const s = await navigator.mediaDevices.getUserMedia({
-        video: { width, height, facingMode: "environment" },
+      // 1) Preferred: rear camera at target resolution, but use `ideal` so
+      //    the browser doesn't stall when the exact combo isn't available.
+      s = await tryGet({
+        video: {
+          width: { ideal: width },
+          height: { ideal: height },
+          facingMode: { ideal: "environment" },
+        },
         audio: false,
       });
-      streamRef.current = s;
-      if (videoRef.current) {
-        videoRef.current.srcObject = s;
-        await videoRef.current.play();
+    } catch (e1) {
+      try {
+        // 2) Fallback: any camera, any resolution. Fixes laptops with only a
+        //    front webcam where `environment` causes "Timeout starting video source".
+        s = await tryGet({ video: true, audio: false });
+      } catch (e2) {
+        const err = e2 instanceof Error ? e2 : new Error(String(e2));
+        let msg = err.message || String(err);
+        if (err.name === "NotAllowedError")
+          msg = "Camera permission denied. Allow camera access in your browser settings.";
+        else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError")
+          msg = "No camera found on this device.";
+        else if (err.name === "NotReadableError" || /timeout/i.test(msg))
+          msg = "Camera is busy or unreachable. Close other apps using the camera (Zoom, Teams, OBS) and retry.";
+        setError(msg);
+        return;
       }
-      setActive(true);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
     }
+    streamRef.current = s;
+    if (videoRef.current && s) {
+      videoRef.current.srcObject = s;
+      try { await videoRef.current.play(); } catch { /* autoplay race; ignore */ }
+    }
+    setActive(true);
   }, [width, height]);
 
   const stop = useCallback(() => {
