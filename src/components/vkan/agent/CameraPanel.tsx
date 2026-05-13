@@ -71,7 +71,7 @@ export function CameraPanel({
       right={
         <div className="flex items-center gap-2">
           {!cam.active ? (
-            <Button size="sm" onClick={cam.start}>Enable camera</Button>
+            <Button size="sm" onClick={() => cam.start()}>Enable camera</Button>
           ) : (
             <Button size="sm" variant="secondary" onClick={() => { setStreaming(false); cam.stop(); }}>
               Disable
@@ -91,6 +91,29 @@ export function CameraPanel({
           />
         </div>
         <div className="flex flex-col gap-2 text-xs">
+          <label className="flex items-center gap-2">
+            <span className="w-16 text-muted-foreground">device</span>
+            <select
+              className="min-w-0 flex-1 rounded border border-border bg-background px-2 py-1"
+              value={cam.deviceId ?? ""}
+              onChange={(e) => {
+                const id = e.target.value || null;
+                cam.setDeviceId(id);
+                if (cam.active) {
+                  cam.stop();
+                  if (id) cam.start(id);
+                }
+              }}
+            >
+              {cam.devices.length === 0 && <option value="">(no cameras detected)</option>}
+              {cam.devices.map((d, i) => (
+                <option key={d.deviceId || i} value={d.deviceId}>
+                  {d.label || `Camera ${i + 1}`}
+                </option>
+              ))}
+            </select>
+            <Button size="sm" variant="ghost" onClick={() => cam.refreshDevices()}>↻</Button>
+          </label>
           <label className="flex items-center gap-2">
             <span className="w-16 text-muted-foreground">rate</span>
             <select
