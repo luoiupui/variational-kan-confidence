@@ -2,6 +2,14 @@
 # background poller that talks to Postgres + the ingest-run edge function.
 # Killing the [http_service] block is what silences the "not listening on
 # 0.0.0.0:8080" warning you saw after `flyctl secrets set`.
+#
+# IMPORTANT — this app runs TWO process groups:
+#   * worker  → background poller (no HTTP, mounts /data volume)
+#   * agent   → FastAPI microAgent on port 8080 (called by Lovable edge fn)
+# Each process group needs its OWN machine. After deploy, run:
+#     flyctl scale count worker=1 agent=1 -a worker-misty-butterfly-4770
+# Otherwise Fly only schedules one machine and the other process never runs,
+# which is why /agent/status looks dead even though the deploy succeeded.
 
 app = "worker-misty-butterfly-4770"
 primary_region = "sin"
