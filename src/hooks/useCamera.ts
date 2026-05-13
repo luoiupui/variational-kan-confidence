@@ -46,8 +46,9 @@ export function useCamera({ width = 320, height = 240, fps = 2, quality = 0.6 }:
     }
     // Permissions probe (Chromium only). Don't fail on unsupported browsers.
     try {
-      // @ts-expect-error - "camera" is valid in Chromium
-      const status = await navigator.permissions?.query?.({ name: "camera" });
+      const status = await navigator.permissions?.query?.({
+        name: "camera" as PermissionName,
+      });
       if (status?.state === "denied") {
         setError("Camera permission is blocked for this site. Click the lock icon in the address bar → allow Camera, then retry.");
         return;
