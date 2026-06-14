@@ -59,6 +59,7 @@ function runToEntry(r: RunRow): LogEntry {
     trajectory_gt: r.trajectory_gt ?? null,
     fe: r.fe ?? null,
     keyframes: r.keyframes ?? null,
+    ate_per_frame: r.ate_per_frame ?? null,
   };
 }
 
