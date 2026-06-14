@@ -9,6 +9,9 @@
 //   trajectories/<run_id>_gt.tum  — TUM trajectory (gt, if present)
 //   per_frame/<run_id>_ate.csv    — per-frame ATE
 //   per_frame/<run_id>_fe.csv     — per-frame free-energy
+//   per_run/<run_id>_trajectory.csv — frame, est_x/y/z, gt_x/y/z (chart-ready)
+//   per_run/<run_id>_keyframes.csv  — keyframe indices used as markers
+//   charts/ate_rmse_bar.csv         — exact data behind the ATE bar chart
 //   README.txt                    — schema description
 
 import JSZip from "jszip";
@@ -65,6 +68,49 @@ function numericCsv(name: string, values: number[]): string {
   return lines.join("\n") + "\n";
 }
 
+/** frame, est_x, est_y, est_z, gt_x, gt_y, gt_z — index-aligned, exactly what
+ *  the DOCX top-down trajectory chart plots. */
+function trajectoryPairedCsv(
+  est: [number, number, number][] | null | undefined,
+  gt: [number, number, number][] | null | undefined,
+): string {
+  const n = Math.max(est?.length ?? 0, gt?.length ?? 0);
+  const lines = ["frame,est_x,est_y,est_z,gt_x,gt_y,gt_z"];
+  for (let i = 0; i < n; i++) {
+    const e = est?.[i];
+    const g = gt?.[i];
+    lines.push([
+      i,
+      e?.[0] ?? "", e?.[1] ?? "", e?.[2] ?? "",
+      g?.[0] ?? "", g?.[1] ?? "", g?.[2] ?? "",
+    ].join(","));
+  }
+  return lines.join("\n") + "\n";
+}
+
+function keyframesCsv(keyframes: number[]): string {
+  const lines = ["keyframe_index"];
+  for (const k of keyframes) lines.push(String(k));
+  return lines.join("\n") + "\n";
+}
+
+/** Mirrors the DOCX bar chart: one row per (sequence, method) with ATE-RMSE. */
+function ateBarCsv(runs: RunEntry[]): string {
+  const done = runs.filter(
+    (r) => r.status === "done" && r.metrics?.ate_rmse != null,
+  );
+  const lines = ["sequence_name,method,ate_rmse,run_id"];
+  for (const r of done) {
+    lines.push([
+      csvEscape(r.sequence_name),
+      r.method,
+      r.metrics?.ate_rmse ?? "",
+      r.run_id,
+    ].join(","));
+  }
+  return lines.join("\n") + "\n";
+}
+
 function readme(volume: Volume, runs: RunEntry[]): string {
   return [
     `V-KAN research bundle — Volume ${volume.id}`,
@@ -81,9 +127,21 @@ function readme(volume: Volume, runs: RunEntry[]): string {
     `  trajectories/<run_id>_gt.tum   Ground-truth trajectory (TUM), when present.`,
     `  per_frame/<run_id>_ate.csv     Per-frame absolute trajectory error (m).`,
     `  per_frame/<run_id>_fe.csv      Per-frame variational free-energy (V-KAN only).`,
+    `  per_run/<run_id>_trajectory.csv Index-aligned est+gt xyz — the exact data`,
+    `                                  plotted in the DOCX top-down trajectory chart.`,
+    `  per_run/<run_id>_keyframes.csv  Keyframe indices used as markers on the`,
+    `                                  trajectory and free-energy charts.`,
+    `  charts/ate_rmse_bar.csv         Exact data behind the DOCX ATE bar chart`,
+    `                                  (one row per sequence × method).`,
     ``,
     `To reproduce ATE/RPE with evo:`,
     `  evo_ape tum <run_id>_gt.tum <run_id>_est.tum -va --plot`,
+    ``,
+    `To redraw the DOCX charts in matplotlib/Excel/gnuplot:`,
+    `  - ATE bar chart    -> charts/ate_rmse_bar.csv`,
+    `  - Trajectory chart -> per_run/<run_id>_trajectory.csv (+ _keyframes.csv)`,
+    `  - Free-energy line -> per_frame/<run_id>_fe.csv      (+ _keyframes.csv)`,
+    `  - Per-frame ATE    -> per_frame/<run_id>_ate.csv`,
     `Note: timestamps are frame indices, so use evo's --align/--correct_scale flags`,
     `as needed. Reviewers wanting true TUM timestamps should re-run the worker`,
     `with the original rgbd_dataset_freiburg* sequence.`,
@@ -100,9 +158,11 @@ export async function buildVolumeBundleZip(volume: Volume): Promise<Blob> {
   zip.file("metrics.csv", metricsCsv(runs));
   zip.file("runs.json", JSON.stringify(runs, null, 2));
   zip.file("README.txt", readme(volume, runs));
+  zip.folder("charts")!.file("ate_rmse_bar.csv", ateBarCsv(runs));
 
   const trajDir = zip.folder("trajectories")!;
   const pfDir = zip.folder("per_frame")!;
+  const prDir = zip.folder("per_run")!;
 
   for (const r of runs) {
     if (r.trajectory_est?.length) {
@@ -110,6 +170,15 @@ export async function buildVolumeBundleZip(volume: Volume): Promise<Blob> {
     }
     if (r.trajectory_gt?.length) {
       trajDir.file(`${r.run_id}_gt.tum`, trajectoryTum(r.trajectory_gt));
+    }
+    if (r.trajectory_est?.length || r.trajectory_gt?.length) {
+      prDir.file(
+        `${r.run_id}_trajectory.csv`,
+        trajectoryPairedCsv(r.trajectory_est, r.trajectory_gt),
+      );
+    }
+    if (r.keyframes?.length) {
+      prDir.file(`${r.run_id}_keyframes.csv`, keyframesCsv(r.keyframes));
     }
     const ate = (r as { ate_per_frame?: number[] }).ate_per_frame;
     if (ate?.length) {
