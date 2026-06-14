@@ -26,6 +26,8 @@ from pathlib import Path
 
 import httpx
 
+from tum_adapter import TUM_WHITELIST, resolve_sequence
+
 SECRET = os.environ["WORKER_INGEST_SECRET"]
 FUNCTIONS_URL = os.environ.get(
     "SUPABASE_FUNCTIONS_URL",
@@ -63,9 +65,18 @@ async def post_ingest(client: httpx.AsyncClient, payload: dict) -> None:
 
 def run_method(method: str, sequence_id: str, out_dir: Path) -> Path:
     """Dispatch to the right runner. Returns path to final stage4_results.json."""
-    seq_dir = DATA_ROOT / f"rgbd_dataset_{sequence_id}"
+    # sequence_id may arrive as "fr1/desk" (matches sequence_name) or "fr1_desk"
+    # (whitelist key). Normalize to the whitelist key, then resolve to the
+    # on-disk directory (e.g. /data/rgbd_dataset_freiburg1_desk).
+    key = sequence_id.replace("/", "_")
+    if key not in TUM_WHITELIST:
+        raise KeyError(
+            f"unknown sequence_id {sequence_id!r}; "
+            f"expected one of {list(TUM_WHITELIST)} (slash or underscore form)"
+        )
+    seq_dir = Path(resolve_sequence(key, str(DATA_ROOT)))
     out_dir.mkdir(parents=True, exist_ok=True)
-    vkan_json = out_dir / f"vkan_{sequence_id}.json"
+    vkan_json = out_dir / f"vkan_{key}.json"
     final_json = out_dir / "stage4_results.json"
 
     if method == "vkan":
@@ -130,7 +141,7 @@ async def process(client, row) -> None:
     print(f"[poller] claim {run_id} {row['method']} {row['sequence_id']}", flush=True)
     await post_ingest(client, {**base, "status": "running"})
 
-    out_dir = DATA_ROOT / "results" / row["sequence_id"]
+    out_dir = DATA_ROOT / "results" / row["sequence_id"].replace("/", "_")
     try:
         final = run_method(row["method"], row["sequence_id"], out_dir)
         await post_ingest(client, build_payload(run_id, row, final))
