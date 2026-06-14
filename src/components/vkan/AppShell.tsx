@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { Activity, FlaskConical, Settings, Info, GitCompare, FileText, Bot, Map } from "lucide-react";
+import { Activity, FlaskConical, Settings, Info, GitCompare, FileText, Bot, Map, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const links = [
@@ -9,6 +9,7 @@ const links = [
   { to: "/reports", label: "Reports", icon: FileText },
   { to: "/agent", label: "Micro-ROS Agent", icon: Bot },
   { to: "/roadmap", label: "Roadmap", icon: Map },
+  { to: "/results", label: "Results", icon: BarChart3 },
   { to: "/config", label: "Configuration", icon: Settings },
   { to: "/about", label: "About", icon: Info },
 ];
