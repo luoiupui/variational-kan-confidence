@@ -26,6 +26,11 @@ export interface RunRow {
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
+  trajectory_est?: [number, number, number][] | null;
+  trajectory_gt?: [number, number, number][] | null;
+  fe?: number[] | null;
+  ate_per_frame?: number[] | null;
+  keyframes?: number[] | null;
 }
 
 export function useRuns(limit = 50) {
@@ -37,7 +42,7 @@ export function useRuns(limit = 50) {
     const { data, error } = await supabase
       .from("runs")
       .select(
-        "id, sequence_id, sequence_name, method, status, frames, metrics, git_sha, notes, error, requested_by, created_at, started_at, completed_at",
+        "id, sequence_id, sequence_name, method, status, frames, metrics, git_sha, notes, error, requested_by, created_at, started_at, completed_at, trajectory_est, trajectory_gt, fe, ate_per_frame, keyframes",
       )
       .order("created_at", { ascending: false })
       .limit(limit);

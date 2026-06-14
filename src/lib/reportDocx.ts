@@ -21,6 +21,7 @@ import {
 import { saveAs } from "file-saver";
 import type { LogEntry, Volume } from "./reportLog";
 import { renderAteChartPng } from "./reportChart";
+import { renderFePng, renderTrajectoryPng } from "./reportPerRunCharts";
 
 const FRONT_MATTER_VERSION = "1.0";
 
@@ -171,6 +172,71 @@ function strengthWeaknessParagraphs(entries: LogEntry[]): Paragraph[] {
 export async function buildVolumeDocx(volume: Volume): Promise<Blob> {
   const chartPng = await renderAteChartPng(volume.entries);
 
+  // Per-run snapshots: V-KAN runs with trajectory and/or FE data.
+  // Cap at the 8 most recent to keep the document size reasonable.
+  const runEntries = volume.entries.filter(
+    (e): e is Extract<LogEntry, { kind: "run" }> => e.kind === "run",
+  );
+  const snapshotCandidates = runEntries
+    .filter(
+      (r) =>
+        r.method === "vkan" &&
+        ((r.trajectory_est && r.trajectory_est.length > 1) ||
+          (r.fe && r.fe.length > 1)),
+    )
+    .sort((a, b) => +new Date(b.ts) - +new Date(a.ts))
+    .slice(0, 8);
+
+  const snapshotBlocks: (Paragraph | Table)[] = [];
+  for (const r of snapshotCandidates) {
+    const label = `${r.sequence_name} · ${new Date(r.ts).toISOString().slice(0, 19).replace("T", " ")}`;
+    snapshotBlocks.push(h(label, HeadingLevel.HEADING_2));
+    if (r.trajectory_est && r.trajectory_est.length > 1) {
+      const png = await renderTrajectoryPng(
+        r.trajectory_est,
+        r.trajectory_gt ?? null,
+        r.keyframes ?? null,
+        `Trajectory (top-down) · ${r.sequence_name}`,
+      );
+      snapshotBlocks.push(
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          children: [
+            new ImageRun({
+              type: "png",
+              data: png,
+              transformation: { width: 520, height: 292 },
+            }),
+          ],
+        }),
+      );
+    }
+    if (r.fe && r.fe.length > 1) {
+      const png = await renderFePng(
+        r.fe,
+        r.keyframes ?? null,
+        `Free-energy series · ${r.sequence_name}`,
+      );
+      snapshotBlocks.push(
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          children: [
+            new ImageRun({
+              type: "png",
+              data: png,
+              transformation: { width: 520, height: 180 },
+            }),
+          ],
+        }),
+      );
+    }
+  }
+  if (snapshotBlocks.length === 0) {
+    snapshotBlocks.push(
+      p("No per-run trajectory or FE data recorded yet for V-KAN runs in this volume.", { size: 20 }),
+    );
+  }
+
   const children: (Paragraph | Table)[] = [
     ...frontMatter(),
     p(
@@ -194,6 +260,12 @@ export async function buildVolumeDocx(volume: Volume): Promise<Blob> {
         }),
       ],
     }),
+    h("7. Per-run Snapshots (V-KAN: trajectory + free-energy)", HeadingLevel.HEADING_1),
+    p(
+      `Showing the ${snapshotCandidates.length} most recent V-KAN run${snapshotCandidates.length === 1 ? "" : "s"} with recorded trajectory / FE data.`,
+      { size: 18 },
+    ),
+    ...snapshotBlocks,
     p(
       `Report generated ${new Date().toISOString()} • V-KAN auto-logger v1`,
       { size: 16 },

@@ -42,7 +42,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { Link } from "react-router-dom";
-import { getVolumes, ingestRuns } from "@/lib/reportLog";
+import { buildVolumesFromRuns } from "@/lib/reportLog";
 import { downloadVolume, buildVolumeDocx } from "@/lib/reportDocx";
 import { saveAs } from "file-saver";
 import { FileText } from "lucide-react";
@@ -294,8 +294,7 @@ export function RunCenter() {
 
   const downloadLatestDocx = async () => {
     try {
-      ingestRuns(runs as never);
-      const vols = getVolumes();
+      const vols = buildVolumesFromRuns(runs);
       const latest = vols[vols.length - 1];
       if (!latest || latest.entries.length === 0) {
         const hasPending = runs.some((r) => r.status === "queued" || r.status === "running");
@@ -317,8 +316,7 @@ export function RunCenter() {
 
   const downloadFilteredDocx = async () => {
     try {
-      ingestRuns(filtered as never);
-      const vols = getVolumes();
+      const vols = buildVolumesFromRuns(filtered as never);
       const latest = vols[vols.length - 1];
       if (!latest || latest.entries.length === 0) {
         toast({ title: "Nothing to export", variant: "destructive" });
