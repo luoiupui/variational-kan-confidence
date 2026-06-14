@@ -2,6 +2,27 @@
 
 Helper scripts that run on your local PC, not on the Fly worker.
 
+## vkan_demo.py vs vkan_slam.py
+
+| Script           | Layer        | What it shows                                                |
+| ---------------- | ------------ | ------------------------------------------------------------ |
+| `vkan_demo.py`   | L1 algorithm | V-KAN encoder + ELBO + NOTEARS, four diagnostic plots        |
+| `vkan_slam.py`   | L2 system    | Frames → Tracker → V-KAN keyframe gate → LocalMapper, ROS-free |
+
+`vkan_slam.py` imports the model from `vkan_demo.py` so there is no
+duplication. A future L3 deployment lifts `VKANSlamSystem.process_frame`
+into a ROS 2 / micro-ROS node without touching the algorithm code.
+
+```bash
+python tools/vkan_slam.py                                # synthetic, no data needed
+python tools/vkan_slam.py --tum <groundtruth.txt>        # replay a TUM sequence
+python tools/vkan_slam.py --tum <path> --emit-results 2026-06-14_slam_run
+```
+
+The `--emit-results` form drops `meta.json` + `metrics.json` + `slam.png`
+into `docs/results/<run-id>/` so the React `/results` page picks the run
+up automatically (same contract as `vkan_demo.py --emit-results`).
+
 ## ingest_external_run.py
 
 Push a SLAM run produced outside the Fly worker (e.g. DynaSLAM on a local
