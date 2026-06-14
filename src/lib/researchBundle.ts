@@ -68,6 +68,49 @@ function numericCsv(name: string, values: number[]): string {
   return lines.join("\n") + "\n";
 }
 
+/** frame, est_x, est_y, est_z, gt_x, gt_y, gt_z — index-aligned, exactly what
+ *  the DOCX top-down trajectory chart plots. */
+function trajectoryPairedCsv(
+  est: [number, number, number][] | null | undefined,
+  gt: [number, number, number][] | null | undefined,
+): string {
+  const n = Math.max(est?.length ?? 0, gt?.length ?? 0);
+  const lines = ["frame,est_x,est_y,est_z,gt_x,gt_y,gt_z"];
+  for (let i = 0; i < n; i++) {
+    const e = est?.[i];
+    const g = gt?.[i];
+    lines.push([
+      i,
+      e?.[0] ?? "", e?.[1] ?? "", e?.[2] ?? "",
+      g?.[0] ?? "", g?.[1] ?? "", g?.[2] ?? "",
+    ].join(","));
+  }
+  return lines.join("\n") + "\n";
+}
+
+function keyframesCsv(keyframes: number[]): string {
+  const lines = ["keyframe_index"];
+  for (const k of keyframes) lines.push(String(k));
+  return lines.join("\n") + "\n";
+}
+
+/** Mirrors the DOCX bar chart: one row per (sequence, method) with ATE-RMSE. */
+function ateBarCsv(runs: RunEntry[]): string {
+  const done = runs.filter(
+    (r) => r.status === "done" && r.metrics?.ate_rmse != null,
+  );
+  const lines = ["sequence_name,method,ate_rmse,run_id"];
+  for (const r of done) {
+    lines.push([
+      csvEscape(r.sequence_name),
+      r.method,
+      r.metrics?.ate_rmse ?? "",
+      r.run_id,
+    ].join(","));
+  }
+  return lines.join("\n") + "\n";
+}
+
 function readme(volume: Volume, runs: RunEntry[]): string {
   return [
     `V-KAN research bundle — Volume ${volume.id}`,
