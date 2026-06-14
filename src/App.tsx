@@ -11,14 +11,8 @@ import About from "./pages/About.tsx";
 import Stage4 from "./pages/Stage4.tsx";
 import Reports from "./pages/Reports.tsx";
 import Agent from "./pages/Agent.tsx";
-import { useAutoReport } from "@/hooks/useAutoReport";
 
 const queryClient = new QueryClient();
-
-const AutoLoggerMount = () => {
-  useAutoReport();
-  return null;
-};
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -26,7 +20,6 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <AutoLoggerMount />
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/experiments" element={<Experiments />} />
