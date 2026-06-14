@@ -27,6 +27,7 @@ import {
 import {
   CheckCircle2,
   Clock,
+  Copy,
   Loader2,
   Play,
   Download,
@@ -330,6 +331,12 @@ export function RunCenter() {
     }
   };
 
+  const copyError = async (error: string | null) => {
+    if (!error) return;
+    await navigator.clipboard.writeText(error);
+    toast({ title: "Copied full run error" });
+  };
+
   return (
     <Panel
       title="Run Center · Cloud"
@@ -461,6 +468,36 @@ export function RunCenter() {
               {latest.status === "failed" &&
                 `failed · ${(latest.error ?? "see worker logs").slice(0, 120)}`}
             </div>
+            {latest.status === "failed" && latest.error && (
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="mt-2 h-7 px-2 text-[10px]">
+                    View full error
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-4xl">
+                  <DialogHeader>
+                    <DialogTitle className="font-mono text-sm">
+                      Run error · {latest.id.slice(0, 8)}…
+                    </DialogTitle>
+                  </DialogHeader>
+                  <div className="flex justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-[10px]"
+                      onClick={() => copyError(latest.error)}
+                    >
+                      <Copy className="mr-1 h-3 w-3" />
+                      Copy
+                    </Button>
+                  </div>
+                  <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded border border-border bg-muted/20 p-3 font-mono text-[10px] leading-relaxed text-muted-foreground">
+                    {latest.error}
+                  </pre>
+                </DialogContent>
+              </Dialog>
+            )}
           </div>
         )}
 
