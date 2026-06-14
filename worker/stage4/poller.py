@@ -76,7 +76,11 @@ def run_method(method: str, sequence_id: str, out_dir: Path) -> Path:
         )
     seq_dir = Path(resolve_sequence(key, str(DATA_ROOT)))
     out_dir.mkdir(parents=True, exist_ok=True)
-    vkan_json = out_dir / f"vkan_{key}.json"
+    # run_vkan_real.py names the file from the on-disk sequence dir
+    # (e.g. "rgbd_dataset_freiburg3_walking_xyz" -> "freiburg3_walking_xyz"),
+    # NOT from the whitelist key ("fr3_walking_xyz"). Match that here.
+    vkan_name = seq_dir.name.replace("rgbd_dataset_", "")
+    vkan_json = out_dir / f"vkan_{vkan_name}.json"
     final_json = out_dir / "stage4_results.json"
 
     if method == "vkan":
