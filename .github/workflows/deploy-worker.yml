@@ -24,8 +24,21 @@ jobs:
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
+      - name: Show commit being deployed
+        run: |
+          echo "Deploying commit: $GITHUB_SHA"
+          echo "Poller line 146 currently reads:"
+          sed -n '140,160p' worker/stage4/poller.py
+
       - name: Deploy worker to Fly.io
         working-directory: worker
-        run: flyctl deploy --remote-only --config fly.toml --app worker-misty-butterfly-4770
+        run: |
+          flyctl deploy \
+            --remote-only \
+            --config fly.toml \
+            --app worker-misty-butterfly-4770 \
+            --strategy rolling \
+            --wait-timeout 600 \
+            --build-arg GIT_SHA=$GITHUB_SHA
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
