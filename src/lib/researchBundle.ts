@@ -9,6 +9,9 @@
 //   trajectories/<run_id>_gt.tum  — TUM trajectory (gt, if present)
 //   per_frame/<run_id>_ate.csv    — per-frame ATE
 //   per_frame/<run_id>_fe.csv     — per-frame free-energy
+//   per_run/<run_id>_trajectory.csv — frame, est_x/y/z, gt_x/y/z (chart-ready)
+//   per_run/<run_id>_keyframes.csv  — keyframe indices used as markers
+//   charts/ate_rmse_bar.csv         — exact data behind the ATE bar chart
 //   README.txt                    — schema description
 
 import JSZip from "jszip";
