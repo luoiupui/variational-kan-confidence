@@ -19,7 +19,7 @@ primary_region = "sin"
 
 [processes]
   worker = "python -u worker/stage4/poller.py"
-  agent  = "python -u -m uvicorn worker.agent.serve:app --host 0.0.0.0 --port 8080"
+  agent  = "python -u -m uvicorn agent.serve:app --host 0.0.0.0 --port 8080 --app-dir /app/worker"
 
 # Restart the machine if the poller exits for any reason. Without this
 # block Fly leaves a crashed machine in `stopped` state forever.
