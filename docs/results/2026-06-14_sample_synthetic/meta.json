@@ -1,0 +1,26 @@
+{
+  "title": "Sample synthetic \u2014 V-KAN demo (seed)",
+  "date": "2026-06-14",
+  "dataset": "synthetic",
+  "sequence": "",
+  "tags": [
+    "vkan",
+    "demo",
+    "synthetic",
+    "seed"
+  ],
+  "description": "Seed run shipped with the repo so the /results page is non-empty before you run vkan_demo.py locally. Regenerate with: python tools/vkan_demo.py --emit-results 2026-06-14_sample_synthetic",
+  "metrics": {
+    "frames": 1000,
+    "keyframes": 2,
+    "free_energy_mean": 5.1,
+    "free_energy_max": 10.3
+  },
+  "figures": [
+    {
+      "file": "diagnostic.png",
+      "caption": "Placeholder diagnostic (real script writes a 2x2 panel)"
+    }
+  ],
+  "series": "metrics.json"
+}
