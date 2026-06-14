@@ -61,8 +61,13 @@ export function useRuns(limit = 50) {
         () => refresh(),
       )
       .subscribe();
+    // Polling fallback — realtime on `runs` is not guaranteed to be in the
+    // publication, so refresh every 5 s as a safety net so the Run Center
+    // panel always reflects the newest row.
+    const iv = setInterval(refresh, 5000);
     return () => {
       supabase.removeChannel(ch);
+      clearInterval(iv);
     };
     // refresh is stable enough; we intentionally only subscribe once per mount
     // eslint-disable-next-line react-hooks/exhaustive-deps

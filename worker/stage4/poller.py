@@ -80,32 +80,40 @@ def run_method(method: str, sequence_id: str, out_dir: Path) -> Path:
     final_json = out_dir / "stage4_results.json"
 
     if method == "vkan":
-        subprocess.run(
-            [sys.executable, str(SCRIPT_DIR / "run_vkan_real.py"),
-             "--sequence", str(seq_dir), "--out-dir", str(out_dir)],
-            check=True,
-        )
-        subprocess.run(
-            [sys.executable, str(SCRIPT_DIR / "eval_with_evo.py"),
-             "--vkan-json", str(vkan_json), "--out", str(final_json)],
-            check=True,
-        )
+        _run_checked([sys.executable, str(SCRIPT_DIR / "run_vkan_real.py"),
+                      "--sequence", str(seq_dir), "--out-dir", str(out_dir)])
+        _run_checked([sys.executable, str(SCRIPT_DIR / "eval_with_evo.py"),
+                      "--vkan-json", str(vkan_json), "--out", str(final_json)])
     elif method == "orb3":
-        subprocess.run(
-            ["bash", str(SCRIPT_DIR / "run_orb3_baseline.sh"),
-             str(seq_dir), str(out_dir)],
-            check=True,
-        )
+        _run_checked(["bash", str(SCRIPT_DIR / "run_orb3_baseline.sh"),
+                      str(seq_dir), str(out_dir)])
     elif method == "dynaslam":
-        subprocess.run(
-            ["bash", str(SCRIPT_DIR / "run_dynaslam_baseline.sh"),
-             str(seq_dir), str(out_dir)],
-            check=True,
-        )
+        _run_checked(["bash", str(SCRIPT_DIR / "run_dynaslam_baseline.sh"),
+                      str(seq_dir), str(out_dir)])
     else:
         raise ValueError(f"Unknown method: {method}")
 
     return final_json
+
+
+def _run_checked(cmd):
+    """Like subprocess.run(check=True) but captures stdout+stderr and surfaces
+    them in the exception message so that the ingest-run `error` column in
+    Lovable Cloud contains the actual failure (not just 'returned exit 1')."""
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    # Always echo to worker stdout/stderr so `flyctl logs` shows it too.
+    if res.stdout:
+        print(res.stdout, flush=True)
+    if res.stderr:
+        print(res.stderr, file=sys.stderr, flush=True)
+    if res.returncode != 0:
+        msg = (
+            f"command failed (exit {res.returncode}): {' '.join(cmd)}\n"
+            f"--- stdout (last 1500 chars) ---\n{(res.stdout or '')[-1500:]}\n"
+            f"--- stderr (last 1500 chars) ---\n{(res.stderr or '')[-1500:]}"
+        )
+        raise RuntimeError(msg)
+    return res
 
 
 def build_payload(run_id: str, row, final_json: Path) -> dict:
