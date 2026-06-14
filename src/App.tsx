@@ -11,6 +11,7 @@ import About from "./pages/About.tsx";
 import Stage4 from "./pages/Stage4.tsx";
 import Reports from "./pages/Reports.tsx";
 import Agent from "./pages/Agent.tsx";
+import Roadmap from "./pages/Roadmap.tsx";
 
 const queryClient = new QueryClient();
 
@@ -26,6 +27,7 @@ const App = () => (
           <Route path="/stage4" element={<Stage4 />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/agent" element={<Agent />} />
+          <Route path="/roadmap" element={<Roadmap />} />
           <Route path="/config" element={<Config />} />
           <Route path="/about" element={<About />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
