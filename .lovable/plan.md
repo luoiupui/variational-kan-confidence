@@ -1,100 +1,59 @@
+## Recommendation: go with Option 2 first, keep Option 1 as a last resort
 
-## Feasibility (short answer)
+Option 1 (destroy the Fly volume + worker app, recreate from scratch) is heavy and irreversible:
+- The `tum_data` volume holds the TUM RGB-D sequences (≈1.4 GB per sequence). Deleting it means re-uploading every dataset over `flyctl ssh sftp` — hours of bandwidth, not minutes.
+- The Fly app name `worker-misty-butterfly-4770` is wired into 6 places (`.github/workflows/deploy-worker.yml`, `worker/fly.toml`, `worker/README.md`, `worker/stage4/INGEST.md`, `supabase/functions/*`, and the `SUPABASE_FUNCTIONS_URL` hardcoded in `poller.py`). Recreating under a new name forces edits in all of them.
+- Secrets (`WORKER_INGEST_SECRET`, etc.) would have to be re-set, and the GitHub Actions `FLY_API_TOKEN` may need to be re-issued.
+- None of the historical errors since May 6 have actually been traced to volume corruption or app-level rot — they've been Dockerfile / `fly.toml` / process-group / Python-import issues, all fixable in-repo.
 
-Yes — but split into 3 layers, because Lovable's preview is a browser (no ROS, no PyTorch, no robot):
+Option 2 is the correct first move: audit the files that actually ship to Fly, compare against the symptoms in the May-6-onward history, and patch in place. If after a clean redeploy the machine still won't boot or the volume is genuinely unreadable, *then* escalate to Option 1.
 
-| Layer | Where it runs | Feasible in Lovable? |
-|---|---|---|
-| Dashboard UI + camera capture + panels | React app (this project) | Yes, fully |
-| microAgent inference (microGPT / nanoGPT / SLM) | Fly.io worker (already deployed) or Lovable AI Gateway | Yes, via existing worker |
-| Real ROS 2 node + physical/sim robot | User's own PC / Jetson / Isaac Sim | Out of scope — bridged via the worker over HTTP/WebSocket |
+## Plan for Option 2 — file + config audit
 
-We will not run `rclpy` or PyTorch in the browser. The Dashboard will act as the **observation + control surface**; the worker will host the **micro-agent loop**; an optional local ROS bridge script (provided as a file in `worker/ros_bridge/`) lets advanced users plug a real robot in later.
+### A. Files I will read end-to-end (Fly surface only)
+1. `worker/Dockerfile` — base image, system deps, COPY layout, CMD.
+2. `worker/fly.toml` — process groups, mounts, `[http_service]`, VM sizing, restart policy.
+3. `worker/requirements.txt` — version pins (torch 2.2.2 on shared-cpu-1x / 1 GB is a known OOM risk).
+4. `worker/stage4/poller.py` — env-var reads, claim-run URL, subprocess dispatch.
+5. `worker/agent/serve.py` + `worker/agent/micro_agent.py` + `worker/agent/tiny_net.py` — uvicorn entrypoint path matches `fly.toml` `agent` process command.
+6. `.github/workflows/deploy-worker.yml` — checkout depth, working-directory, app name, token name.
+7. `supabase/functions/claim-run/index.ts`, `ingest-run/index.ts`, `worker-health/index.ts` — confirm contract still matches what `poller.py` sends.
+8. `worker/stage4/run_vkan_real.py`, `eval_with_evo.py`, `tum_adapter.py` — confirm CLI flags the poller passes still exist.
+9. `worker/agent/checkpoints/` — confirm `.gitkeep` only; the runtime fallback path in `micro_agent.py` already handles "no checkpoint" gracefully, but I'll verify.
 
----
-
-## What gets built
-
-### 1. New Dashboard route: `/agent` (Micro-ROS Agent)
-Added to `AppShell` nav alongside Dashboard / Stage 4 / Reports.
-
-### 2. Four new panels (laid out like existing `Index.tsx`)
-
-1. **Camera Capture Panel** — `getUserMedia` live preview, FPS selector (1/5/10), resolution selector, "Start/Stop streaming" button. Captures frames to JPEG via `<canvas>`.
-2. **Frame Ingestion Panel** — sends sampled frames (base64 or via Supabase Storage) to a new edge function `ingest-frame`; shows last N thumbnails, latency, drop rate.
-3. **Agent Decision Panel** — live stream of the microAgent's structured action tokens (`[NAV] FORWARD 0.5`, `[ARM] GRASP [TARGET] OBJ_A`), with a parsed view (nav vs arm vs target). Subscribes via Supabase Realtime to a new `agent_decisions` table.
-4. **Action Token Schema Panel** — read-only reference of the token protocol (NAV / ARM / TARGET) plus the current vocabulary size and model checkpoint name pulled from the worker `/agent/status` endpoint.
-
-A 5th small **Telemetry Training Panel** (optional, behind a "Show advanced" toggle) lets the user upload a `telemetry_logs.txt` and trigger a worker training run; status polled from `runs` table (reuses existing infrastructure).
-
-### 3. Where panels go on existing Dashboard
-The existing SLAM panels stay untouched on `/`. The new panels live on `/agent`. If the user prefers, we can also add a single compact **"Agent · Last Decision"** strip at the bottom of `/` that links to `/agent` — non-intrusive.
-
----
-
-## Backend additions (Lovable Cloud)
-
-- **Edge functions** (new):
-  - `ingest-frame` — auth-checked, writes frame metadata to `frames` table + uploads JPEG to Storage bucket `agent-frames`.
-  - `agent-tick` — accepts a frame id + text context, calls the worker `/agent/infer` endpoint (or Lovable AI Gateway as fallback), inserts result into `agent_decisions`.
-- **Tables**:
-  - `frames(id, ts, width, height, storage_path, sequence_id)`
-  - `agent_decisions(id, frame_id, raw_output, nav_cmd, arm_cmd, target_id, model_version, latency_ms, ts)`
-- **Realtime** enabled on `agent_decisions` so the panel streams without polling.
-- **Storage bucket** `agent-frames` (private, signed URLs for thumbnails).
-
----
-
-## Worker additions (Fly.io, already running)
-
-New `worker/agent/` module:
-- `micro_agent.py` — implements the loop from your note (tiny_net + character-level generate).
-- `serve.py` — small FastAPI/Flask endpoint: `POST /agent/infer {context} -> {raw, nav, arm, target}`, `GET /agent/status`.
-- `ros_bridge/README.md` + `ros_bridge/nn_agent_node.py` — the rclpy script from your note, **as a downloadable artifact**, not deployed (Fly slim image won't have ROS).
-- `requirements.txt` += `torch`, `numpy`, `fastapi`, `uvicorn`.
-
-The worker stays the single deploy target — same GitHub Actions pipeline.
-
-### Inference choice (one decision needed from you, but I'll default if you don't reply)
-Default: ship a tiny PyTorch transformer trained on the sample `custom_telemetry.txt` from your note (matches the Karpathy-style microAgent narrative). If you want a real SLM instead, the same endpoint can call Lovable AI Gateway (`google/gemini-2.5-flash-lite`) with a JSON-schema prompt — much smarter but not "micro".
-
----
-
-## Technical details
+### B. Symptom → likely-cause matrix I will fill in
+For each error class seen since May 6 (you'll see them surfaced as a table in the final report), check the most probable file:
 
 ```text
-Browser (Dashboard /agent)
-  ├─ getUserMedia → <video> → canvas.toDataURL('image/jpeg', q)
-  ├─ throttle to N fps → POST /functions/v1/ingest-frame
-  └─ subscribe Realtime: agent_decisions
-
-Lovable Cloud
-  ├─ ingest-frame → Storage(agent-frames) + INSERT frames
-  └─ agent-tick   → fetch worker /agent/infer → INSERT agent_decisions
-
-Fly.io worker
-  ├─ FastAPI /agent/infer → tiny_net.generate_action()
-  └─ /agent/status → {model_version, vocab_size, device}
-
-(Optional, user's own PC)
-  └─ rclpy node → polls /agent/infer → publishes /cmd_vel, /arm_gripper/command
+Symptom                                       | Likely file              | Fix class
+----------------------------------------------+--------------------------+------------------
+"not listening on 0.0.0.0:8080"               | fly.toml (http_service)  | process-group split
+"machine exited with code 137" (OOM)          | fly.toml [[vm]] / reqs   | bump memory / drop torch
+ModuleNotFoundError: worker.agent.serve       | Dockerfile WORKDIR/COPY  | PYTHONPATH or -m path
+"volume tum_data not found in region X"       | fly.toml primary_region  | region mismatch
+GH Actions: "no app named ..."                | deploy-worker.yml        | wrong --app / token
+poller: KeyError WORKER_INGEST_SECRET         | secrets not set          | flyctl secrets set
+poller: 401 from claim-run                    | edge fn secret mismatch  | rotate + re-set
+agent /agent/status returns 404               | fly scale (only worker=1)| flyctl scale count
 ```
 
-Frame size kept small (e.g. 320×240, q=0.6, 5 fps ≈ 30 KB/frame ≈ 150 KB/s) to stay under Supabase Storage and edge-function limits.
+### C. Deliverable
+A single audit report (markdown, saved to `/mnt/documents/FLY_AUDIT.md`, downloadable) containing:
+1. The current contents of every Fly-touching file (verbatim, so you can diff against your local PC copies).
+2. The symptom→cause→fix table above, filled in against the actual files.
+3. A **non-destructive recovery checklist** in order: (a) `flyctl status`, (b) `flyctl logs`, (c) `flyctl scale show`, (d) `flyctl secrets list`, (e) `flyctl volumes list` — with the expected output for each, so you can spot the first thing that diverges.
+4. A clearly marked "**Only if Option 2 fails**" appendix with the exact Option-1 sequence (volume snapshot → app destroy → recreate → re-upload), including which 6 files need their app name updated if you choose a new name.
 
----
+### D. What I will NOT do in this pass
+- Not delete the Fly app or volume.
+- Not change `app = "worker-misty-butterfly-4770"` or the Supabase project ref.
+- Not touch `supabase/config.toml` or any auto-generated client file.
+- Not run `flyctl` commands myself — your local PC holds the Fly auth; the report tells you exactly which commands to run and what the output should look like.
 
-## Out of scope (call out explicitly)
-- Running rclpy / Isaac Sim / Gazebo in Lovable preview — impossible (browser).
-- Training large models in the worker — Fly's free machine is CPU-only and tiny; the included training is the toy `MicroRobotTransformer` from your note (~30 s on CPU), not nanoGPT-scale.
-- Two-way actuation of a real robot from the cloud — provided as a local bridge script the user runs themselves; the cloud only emits decisions.
+### E. One question that changes the plan
+If you already know that the volume contents are stale or wrong (e.g. you re-downloaded TUM and want a fresh `/data`), then Option 1's volume-recreate step becomes cheap and we should fold it into the same pass. Otherwise the plan above keeps the data.
 
----
-
-## Build order
-1. DB migration (`frames`, `agent_decisions`, storage bucket, realtime).
-2. Edge functions `ingest-frame`, `agent-tick`.
-3. Worker `agent/` module + endpoint + GH Actions deploy.
-4. Frontend route `/agent`, four panels, hooks (`useCamera`, `useAgentDecisions`).
-5. Optional bottom strip on `/` linking to `/agent`.
-6. Add `worker/ros_bridge/` files as downloadable reference for real-robot use.
+## Technical notes
+- The current `fly.toml` already has the correct two-process split (`worker` + `agent`) and the `[restart] policy = "always"` block, so most pre-May-6 errors should already be gone. The audit will confirm whether the deployed machine actually reflects this `fly.toml` (a stale machine that pre-dates the split is a common silent failure).
+- `torch==2.2.2` on a `shared-cpu-1x` / 1 GB VM is tight; if logs show exit-code 137 on the `agent` process, the fix is `flyctl scale memory 2048 --process-group agent`, not a code change.
+- `poller.py` hardcodes `SUPABASE_FUNCTIONS_URL` to the project URL with an env-var override — safe, no change needed.
