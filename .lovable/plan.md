@@ -1,59 +1,78 @@
-## Recommendation: go with Option 2 first, keep Option 1 as a last resort
+## Diagnosis
 
-Option 1 (destroy the Fly volume + worker app, recreate from scratch) is heavy and irreversible:
-- The `tum_data` volume holds the TUM RGB-D sequences (≈1.4 GB per sequence). Deleting it means re-uploading every dataset over `flyctl ssh sftp` — hours of bandwidth, not minutes.
-- The Fly app name `worker-misty-butterfly-4770` is wired into 6 places (`.github/workflows/deploy-worker.yml`, `worker/fly.toml`, `worker/README.md`, `worker/stage4/INGEST.md`, `supabase/functions/*`, and the `SUPABASE_FUNCTIONS_URL` hardcoded in `poller.py`). Recreating under a new name forces edits in all of them.
-- Secrets (`WORKER_INGEST_SECRET`, etc.) would have to be re-set, and the GitHub Actions `FLY_API_TOKEN` may need to be re-issued.
-- None of the historical errors since May 6 have actually been traced to volume corruption or app-level rot — they've been Dockerfile / `fly.toml` / process-group / Python-import issues, all fixable in-repo.
+`flyctl status` shows only **one machine** in the app:
 
-Option 2 is the correct first move: audit the files that actually ship to Fly, compare against the symptoms in the May-6-onward history, and patch in place. If after a clean redeploy the machine still won't boot or the volume is genuinely unreadable, *then* escalate to Option 1.
+- `worker` process group → 1 machine, state = `stopped`, last updated 2026-05-06 (over a month ago)
+- `agent` process group → **0 machines** (missing entirely)
 
-## Plan for Option 2 — file + config audit
+Two separate problems:
 
-### A. Files I will read end-to-end (Fly surface only)
-1. `worker/Dockerfile` — base image, system deps, COPY layout, CMD.
-2. `worker/fly.toml` — process groups, mounts, `[http_service]`, VM sizing, restart policy.
-3. `worker/requirements.txt` — version pins (torch 2.2.2 on shared-cpu-1x / 1 GB is a known OOM risk).
-4. `worker/stage4/poller.py` — env-var reads, claim-run URL, subprocess dispatch.
-5. `worker/agent/serve.py` + `worker/agent/micro_agent.py` + `worker/agent/tiny_net.py` — uvicorn entrypoint path matches `fly.toml` `agent` process command.
-6. `.github/workflows/deploy-worker.yml` — checkout depth, working-directory, app name, token name.
-7. `supabase/functions/claim-run/index.ts`, `ingest-run/index.ts`, `worker-health/index.ts` — confirm contract still matches what `poller.py` sends.
-8. `worker/stage4/run_vkan_real.py`, `eval_with_evo.py`, `tum_adapter.py` — confirm CLI flags the poller passes still exist.
-9. `worker/agent/checkpoints/` — confirm `.gitkeep` only; the runtime fallback path in `micro_agent.py` already handles "no checkpoint" gracefully, but I'll verify.
+1. **No `agent` machine exists.** That's why `curl /agent/status` returns 404 and `worker-health` reports unhealthy — there is literally no process listening on port 8080.
+2. **The `worker` machine is `stopped`, not `started`.** Even after the next deploy, Fly will create the new machine in the same stopped state unless you scale or start it.
 
-### B. Symptom → likely-cause matrix I will fill in
-For each error class seen since May 6 (you'll see them surfaced as a table in the final report), check the most probable file:
+This is exactly the case the comment in `worker/fly.toml` warns about:
 
-```text
-Symptom                                       | Likely file              | Fix class
-----------------------------------------------+--------------------------+------------------
-"not listening on 0.0.0.0:8080"               | fly.toml (http_service)  | process-group split
-"machine exited with code 137" (OOM)          | fly.toml [[vm]] / reqs   | bump memory / drop torch
-ModuleNotFoundError: worker.agent.serve       | Dockerfile WORKDIR/COPY  | PYTHONPATH or -m path
-"volume tum_data not found in region X"       | fly.toml primary_region  | region mismatch
-GH Actions: "no app named ..."                | deploy-worker.yml        | wrong --app / token
-poller: KeyError WORKER_INGEST_SECRET         | secrets not set          | flyctl secrets set
-poller: 401 from claim-run                    | edge fn secret mismatch  | rotate + re-set
-agent /agent/status returns 404               | fly scale (only worker=1)| flyctl scale count
+> Each process group needs its OWN machine. After deploy, run `flyctl scale count worker=1 agent=1` — otherwise Fly only schedules one machine and the other process never runs.
+
+That `scale count` step was never run, so only `worker` was ever created, and it has since been stopped.
+
+---
+
+## Plan (commands only — no code changes)
+
+Run these in order from `C:\Users\Admin\.fly\variational-kan-confidence-main\worker`.
+
+### Step 1 — Deploy the current config first
+The existing image is from May and predates the `[[restart]]` / process-group fixes. Re-deploy so both process definitions are registered with Fly:
+
+```
+flyctl deploy -a worker-misty-butterfly-4770
 ```
 
-### C. Deliverable
-A single audit report (markdown, saved to `/mnt/documents/FLY_AUDIT.md`, downloadable) containing:
-1. The current contents of every Fly-touching file (verbatim, so you can diff against your local PC copies).
-2. The symptom→cause→fix table above, filled in against the actual files.
-3. A **non-destructive recovery checklist** in order: (a) `flyctl status`, (b) `flyctl logs`, (c) `flyctl scale show`, (d) `flyctl secrets list`, (e) `flyctl volumes list` — with the expected output for each, so you can spot the first thing that diverges.
-4. A clearly marked "**Only if Option 2 fails**" appendix with the exact Option-1 sequence (volume snapshot → app destroy → recreate → re-upload), including which 6 files need their app name updated if you choose a new name.
+Wait for "deployed successfully". This will create/update the `worker` machine but still won't create the `agent` machine.
 
-### D. What I will NOT do in this pass
-- Not delete the Fly app or volume.
-- Not change `app = "worker-misty-butterfly-4770"` or the Supabase project ref.
-- Not touch `supabase/config.toml` or any auto-generated client file.
-- Not run `flyctl` commands myself — your local PC holds the Fly auth; the report tells you exactly which commands to run and what the output should look like.
+### Step 2 — Scale both process groups to 1 machine each
+```
+flyctl scale count worker=1 agent=1 -a worker-misty-butterfly-4770
+```
 
-### E. One question that changes the plan
-If you already know that the volume contents are stale or wrong (e.g. you re-downloaded TUM and want a fresh `/data`), then Option 1's volume-recreate step becomes cheap and we should fold it into the same pass. Otherwise the plan above keeps the data.
+Answer `y` when prompted. This is the critical step: it tells Fly to spawn a second machine for the `agent` process group.
 
-## Technical notes
-- The current `fly.toml` already has the correct two-process split (`worker` + `agent`) and the `[restart] policy = "always"` block, so most pre-May-6 errors should already be gone. The audit will confirm whether the deployed machine actually reflects this `fly.toml` (a stale machine that pre-dates the split is a common silent failure).
-- `torch==2.2.2` on a `shared-cpu-1x` / 1 GB VM is tight; if logs show exit-code 137 on the `agent` process, the fix is `flyctl scale memory 2048 --process-group agent`, not a code change.
-- `poller.py` hardcodes `SUPABASE_FUNCTIONS_URL` to the project URL with an env-var override — safe, no change needed.
+### Step 3 — Confirm two machines now exist
+```
+flyctl status -a worker-misty-butterfly-4770
+```
+
+Expected: two rows, one per `PROCESS` (`worker` and `agent`), both `started` in region `sin`.
+
+If `worker` still shows `stopped`, start it explicitly:
+```
+flyctl machine start 48e0e9eb765448 -a worker-misty-butterfly-4770
+```
+
+### Step 4 — Verify logs
+```
+flyctl logs -a worker-misty-butterfly-4770
+```
+
+Expected lines:
+- from `worker`: `[poller] starting · ingest=... data=/data`
+- from `agent`:  `Uvicorn running on http://0.0.0.0:8080`
+
+### Step 5 — Verify HTTP endpoints
+```
+curl https://worker-misty-butterfly-4770.fly.dev/agent/status
+curl https://oedetxrzmzshdqtyhakm.supabase.co/functions/v1/worker-health
+```
+
+Expected:
+- `/agent/status` → JSON with `model_version`
+- `/worker-health` → JSON `{"health":"healthy", ...}` (may take ~30s after agent boots)
+
+---
+
+## What I will change in the project (in build mode)
+
+Nothing yet — this is an operations/deploy issue, not a code issue. Both `worker/Dockerfile` and `worker/fly.toml` in the repo are already correct (process groups, `[[vm]]`, `[[restart]]`, mounts, http_service). The missing piece is the one-time `flyctl scale count worker=1 agent=1` command, which must be run from your machine.
+
+If after Step 3 the `agent` machine still fails to appear, paste the new `flyctl status` and `flyctl scale show` output and I will diagnose further (most likely cause would be a region/volume constraint, but `worker` is the only volume-bound group so `agent` should schedule freely).
