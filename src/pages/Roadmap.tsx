@@ -363,6 +363,18 @@ const Roadmap = () => {
               <code className="font-mono">tools/ingest_external_run.py</code> and{" "}
               <code className="font-mono">tools/README.md</code>.
             </li>
+            <li>
+              <strong>Local-PC dataset setup:</strong> follow{" "}
+              <code className="font-mono">docs/LOCAL_DATASET.md</code> and run{" "}
+              <code className="font-mono">docs/download_tum.sh</code> to fetch all six TUM
+              sequences in one shot.
+            </li>
+            <li>
+              <strong>Local install &amp; hardware sizing:</strong> see{" "}
+              <code className="font-mono">docs/LOCAL_HARDWARE.md</code> for per-OS install
+              recipes (Ubuntu / WSL2 / macOS), GPU tiers, and a per-task hardware decision
+              table.
+            </li>
           </ul>
         </Panel>
       </div>
