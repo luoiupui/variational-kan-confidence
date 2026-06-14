@@ -1,34 +1,19 @@
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { AppShell } from "@/components/vkan/AppShell";
 import { Panel } from "@/components/vkan/Panel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Download, FileText, Trash2, Loader2 } from "lucide-react";
-import {
-  clearLog,
-  getVolumes,
-  VOLUME_LIMIT,
-  type Volume,
-} from "@/lib/reportLog";
+import { Download, FileText, Loader2, RefreshCw } from "lucide-react";
+import { buildVolumesFromRuns, VOLUME_LIMIT, type Volume } from "@/lib/reportLog";
 import { downloadVolume } from "@/lib/reportDocx";
 import { useToast } from "@/hooks/use-toast";
-import { useAutoReport } from "@/hooks/useAutoReport";
+import { useRuns } from "@/hooks/useRuns";
 
 const Reports = () => {
-  useAutoReport();
   const { toast } = useToast();
-  const [volumes, setVolumes] = useState<Volume[]>(() => getVolumes());
+  const { runs, loading, refresh } = useRuns(500);
+  const volumes = useMemo<Volume[]>(() => buildVolumesFromRuns(runs), [runs]);
   const [busy, setBusy] = useState<number | null>(null);
-
-  useEffect(() => {
-    const refresh = () => setVolumes(getVolumes());
-    window.addEventListener("vkan-report-updated", refresh);
-    window.addEventListener("storage", refresh);
-    return () => {
-      window.removeEventListener("vkan-report-updated", refresh);
-      window.removeEventListener("storage", refresh);
-    };
-  }, []);
 
   const handleDownload = async (v: Volume) => {
     setBusy(v.id);
@@ -56,26 +41,19 @@ const Reports = () => {
             Technical Reports · Auto-log
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Every completed run is appended automatically · rollover at {VOLUME_LIMIT} entries ·
-            download any volume as DOCX with run history, comparison tables, strength/weakness analysis, and embedded ATE chart.
+            Sourced directly from the <span className="font-mono">runs</span> table in Lovable Cloud —
+            survives browser clears and is identical on every machine. Rollover at {VOLUME_LIMIT} entries.
+            Each DOCX includes run history, V-KAN vs baseline comparison, strength/weakness analysis,
+            ATE chart, and per-run trajectory + free-energy snapshots.
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="text-xs">
             {volumes.length} volume{volumes.length !== 1 && "s"} · {total} entries
           </Badge>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              if (confirm("Clear all logged volumes? This cannot be undone.")) {
-                clearLog();
-                setVolumes(getVolumes());
-              }
-            }}
-          >
-            <Trash2 className="mr-1 h-3 w-3" />
-            Reset log
+          <Button variant="ghost" size="sm" onClick={refresh} disabled={loading}>
+            <RefreshCw className={`mr-1 h-3 w-3 ${loading ? "animate-spin" : ""}`} />
+            Refresh
           </Button>
         </div>
       </header>
