@@ -153,6 +153,10 @@ def build_payload(run_id: str, row, final_json: Path) -> dict:
         "map_points": seq.get("map_points"),
         "fe": seq.get("fe"),
     }
+    # ingest-run Zod schema treats optional fields as "absent OR correct type",
+    # so a literal null for e.g. map_points triggers "Expected array, received
+    # null". Strip any keys whose value is None before posting.
+    payload = {k: v for k, v in payload.items() if v is not None}
     # Strict JSON does not allow NaN/Infinity; Deno's req.json() rejects them
     # with a 400. Walking sequences occasionally produce non-finite values in
     # Umeyama alignment or evo stats, so scrub before posting.
