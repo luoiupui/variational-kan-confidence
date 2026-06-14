@@ -375,6 +375,15 @@ const Roadmap = () => {
               recipes (Ubuntu / WSL2 / macOS), GPU tiers, and a per-task hardware decision
               table.
             </li>
+            <li>
+              <strong>Single-file V-KAN demo:</strong> run{" "}
+              <code className="font-mono">python tools/vkan_demo.py</code> for a ~350-line
+              reference implementation (variational KAN + bagged NOTEARS + keyframe gate)
+              that works on synthetic data out of the box, or on a TUM{" "}
+              <code className="font-mono">groundtruth.txt</code> via{" "}
+              <code className="font-mono">--tum &lt;path&gt;</code>. Produces a 2×2 PNG with
+              free-energy, latent trajectory, causal-graph change and training loss.
+            </li>
           </ul>
         </Panel>
       </div>
