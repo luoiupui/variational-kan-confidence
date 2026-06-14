@@ -3,9 +3,10 @@ import { AppShell } from "@/components/vkan/AppShell";
 import { Panel } from "@/components/vkan/Panel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Download, FileText, Loader2, RefreshCw } from "lucide-react";
+import { Download, FileText, Loader2, Package, RefreshCw } from "lucide-react";
 import { buildVolumesFromRuns, VOLUME_LIMIT, type Volume } from "@/lib/reportLog";
 import { downloadVolume } from "@/lib/reportDocx";
+import { downloadVolumeBundle } from "@/lib/researchBundle";
 import { useToast } from "@/hooks/use-toast";
 import { useRuns } from "@/hooks/useRuns";
 
@@ -14,6 +15,7 @@ const Reports = () => {
   const { runs, loading, refresh } = useRuns(500);
   const volumes = useMemo<Volume[]>(() => buildVolumesFromRuns(runs), [runs]);
   const [busy, setBusy] = useState<number | null>(null);
+  const [busyZip, setBusyZip] = useState<number | null>(null);
 
   const handleDownload = async (v: Volume) => {
     setBusy(v.id);
@@ -28,6 +30,25 @@ const Reports = () => {
       });
     } finally {
       setBusy(null);
+    }
+  };
+
+  const handleDownloadBundle = async (v: Volume) => {
+    setBusyZip(v.id);
+    try {
+      await downloadVolumeBundle(v);
+      toast({
+        title: `Volume ${v.id} bundle downloaded`,
+        description: "metrics.csv + TUM trajectories + per-frame CSVs + runs.json",
+      });
+    } catch (e) {
+      toast({
+        title: "Bundle download failed",
+        description: String((e as Error).message ?? e),
+        variant: "destructive",
+      });
+    } finally {
+      setBusyZip(null);
     }
   };
 
@@ -82,7 +103,21 @@ const Reports = () => {
                   ) : (
                     <Download className="mr-1 h-3 w-3" />
                   )}
-                  Download
+                  Download .docx
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleDownloadBundle(v)}
+                  disabled={busyZip === v.id || v.entries.length === 0}
+                  className="ml-2"
+                >
+                  {busyZip === v.id ? (
+                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                  ) : (
+                    <Package className="mr-1 h-3 w-3" />
+                  )}
+                  Research bundle (.zip)
                 </Button>
               </div>
               {v.entries.length === 0 && (
