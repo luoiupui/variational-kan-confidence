@@ -35,17 +35,30 @@ def _run_evo_ape(gt: str, est: str) -> dict:
             "-a",            # SE(3) Umeyama alignment
             "--save_results", out,
         ]
-        subprocess.run(cmd, check=True, capture_output=True)
-        # evo writes a zip; for portability just re-parse via --no_warnings stats
+        _run_checked(cmd)
         cmd2 = ["evo_ape", "tum", gt, est, "-a", "-v"]
-        res = subprocess.run(cmd2, check=True, capture_output=True, text=True)
+        res = _run_checked(cmd2)
         return _parse_evo_stdout(res.stdout)
 
 
 def _run_evo_rpe(gt: str, est: str, delta: float = 1.0) -> dict:
     cmd = ["evo_rpe", "tum", gt, est, "-a", "--delta", str(delta), "-v"]
-    res = subprocess.run(cmd, check=True, capture_output=True, text=True)
+    res = _run_checked(cmd)
     return _parse_evo_stdout(res.stdout)
+
+
+def _run_checked(cmd):
+    """Like subprocess.run(check=True) but surfaces stderr/stdout on failure."""
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0:
+        msg = (
+            f"command failed (exit {res.returncode}): {' '.join(cmd)}\n"
+            f"--- stdout ---\n{res.stdout}\n"
+            f"--- stderr ---\n{res.stderr}"
+        )
+        print(msg, file=sys.stderr, flush=True)
+        raise RuntimeError(msg)
+    return res
 
 
 def _parse_evo_stdout(stdout: str) -> dict:
