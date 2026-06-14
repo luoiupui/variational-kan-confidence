@@ -23,7 +23,7 @@ primary_region = "sin"
 
 # Restart the machine if the poller exits for any reason. Without this
 # block Fly leaves a crashed machine in `stopped` state forever.
-[restart]
+[[restart]]
   policy = "always"
   max_retries = 10
 
