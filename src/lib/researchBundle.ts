@@ -158,9 +158,11 @@ export async function buildVolumeBundleZip(volume: Volume): Promise<Blob> {
   zip.file("metrics.csv", metricsCsv(runs));
   zip.file("runs.json", JSON.stringify(runs, null, 2));
   zip.file("README.txt", readme(volume, runs));
+  zip.folder("charts")!.file("ate_rmse_bar.csv", ateBarCsv(runs));
 
   const trajDir = zip.folder("trajectories")!;
   const pfDir = zip.folder("per_frame")!;
+  const prDir = zip.folder("per_run")!;
 
   for (const r of runs) {
     if (r.trajectory_est?.length) {
@@ -168,6 +170,15 @@ export async function buildVolumeBundleZip(volume: Volume): Promise<Blob> {
     }
     if (r.trajectory_gt?.length) {
       trajDir.file(`${r.run_id}_gt.tum`, trajectoryTum(r.trajectory_gt));
+    }
+    if (r.trajectory_est?.length || r.trajectory_gt?.length) {
+      prDir.file(
+        `${r.run_id}_trajectory.csv`,
+        trajectoryPairedCsv(r.trajectory_est, r.trajectory_gt),
+      );
+    }
+    if (r.keyframes?.length) {
+      prDir.file(`${r.run_id}_keyframes.csv`, keyframesCsv(r.keyframes));
     }
     const ate = (r as { ate_per_frame?: number[] }).ate_per_frame;
     if (ate?.length) {
