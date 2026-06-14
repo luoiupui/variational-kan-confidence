@@ -1,212 +1,230 @@
 
-# Migrating the V-KAN project to a fully local PC deployment
+# Local-PC operations guide — dataset, software, hardware
 
-Goal: run the whole stack — UI, database, edge-function-equivalents, GPU worker (V-KAN / ORB-SLAM3 / DynaSLAM), and storage — on a single Linux/Windows workstation, with **no Lovable Cloud and no Fly.io** dependency. The React frontend, the worker Python code, and the SQL schema are reused **as-is**; only the *hosting layer* changes.
+This complements the **"Migrating the V-KAN project to a fully local PC deployment"** plan already saved in `.lovable/plan.md`. Where that plan covers *what to move*, this one covers *what to install, where to get the data, and what hardware actually works*.
+
+Two new files would be added when this plan is implemented:
+
+- `docs/LOCAL_DATASET.md` — dataset download + layout (the long version of section 2 below).
+- `docs/LOCAL_HARDWARE.md` — installation recipes per OS + hardware matrix (sections 3-5 below).
+
+No source-code edits are needed for any of this — it is documentation plus shell recipes.
 
 ---
 
-## 1. Target local architecture
+## 1. What the code already expects
+
+The worker is hard-wired to the **TUM RGB-D benchmark**. The whitelist lives at `worker/stage4/tum_adapter.py` (lines 29-36) and currently enables 6 sequences:
+
+| seq_id | dynamic % | tarball | typical use |
+|---|---|---|---|
+| `fr1_xyz` | 0 | `rgbd_dataset_freiburg1_xyz.tgz` | sanity check, static |
+| `fr1_desk` | 5 | `rgbd_dataset_freiburg1_desk.tgz` | low-dynamic |
+| `fr2_desk` | 0 | `rgbd_dataset_freiburg2_desk.tgz` | longer static |
+| `fr3_sitting_static` | 25 | `rgbd_dataset_freiburg3_sitting_static.tgz` | mild dynamic |
+| `fr3_walking_xyz` | 70 | `rgbd_dataset_freiburg3_walking_xyz.tgz` | **headline V-KAN vs ORB3 vs DynaSLAM** |
+| `fr3_walking_halfsphere` | 70 | `rgbd_dataset_freiburg3_walking_halfsphere.tgz` | second high-dynamic |
+
+Total disk: ~3.5 GB compressed, ~7 GB extracted. Each sequence ships `rgb.txt`, `depth.txt`, `groundtruth.txt`, `rgb/*.png`, `depth/*.png` — exactly the layout `tum_adapter.py` expects.
+
+The baseline runners (`run_orb3_baseline.sh`, `run_dynaslam_baseline.sh`) additionally need:
+
+- `worker/stage4/TUM1.yaml` — fr1 intrinsics (already in repo)
+- `worker/stage4/TUM3.yaml` — fr3 intrinsics (already in repo)
+- `ORBvoc.txt` — shipped inside the ORB-SLAM3 / DynaSLAM docker images
+
+So **no new YAML / vocabulary files** are required; you only download datasets and pull two Docker images.
+
+---
+
+## 2. Dataset setup on the local PC
+
+### 2.1 Layout
+
+Pick one folder, e.g. `~/slam_data`. Final layout the worker expects (`DATA_ROOT=~/slam_data`):
 
 ```text
-┌───────────────────────────────────────────────────────────┐
-│  Docker Compose stack on your PC                          │
-│                                                           │
-│  ┌──────────┐  ┌──────────────┐  ┌──────────────────────┐ │
-│  │ frontend │→ │ supabase     │← │ worker (GPU, host)   │ │
-│  │ (vite)   │  │  - postgres  │  │  - stage4/poller.py  │ │
-│  │  :8080   │  │  - postgrest │  │  - VKAN / ORB3 /     │ │
-│  └──────────┘  │  - gotrue    │  │    DynaSLAM          │ │
-│                │  - storage   │  └──────────────────────┘ │
-│                │  - studio    │                           │
-│                │  - functions │ ← Deno, runs edge fns     │
-│                │  :54321      │                           │
-│                └──────────────┘                           │
-└───────────────────────────────────────────────────────────┘
+~/slam_data/
+├── rgbd_dataset_freiburg1_xyz/
+├── rgbd_dataset_freiburg1_desk/
+├── rgbd_dataset_freiburg2_desk/
+├── rgbd_dataset_freiburg3_sitting_static/
+├── rgbd_dataset_freiburg3_walking_xyz/
+└── rgbd_dataset_freiburg3_walking_halfsphere/
 ```
 
-Two clean ways to provide the backend:
+### 2.2 One-shot download script (proposed `docs/download_tum.sh`)
 
-- **Option A (recommended): Supabase CLI local stack** (`supabase start`).
-  Boots Postgres + PostgREST + GoTrue + Storage + Edge-Functions runtime + Studio in Docker. Your existing `supabase/migrations/*.sql` and `supabase/functions/*` run unchanged. Closest to current behaviour, lowest code churn.
-- **Option B: plain Postgres + a tiny FastAPI/Express shim** that re-implements the 6 edge functions. Lighter weight, but you have to port `enqueue-run`, `claim-run`, `ingest-run`, `ingest-frame`, `worker-health`, `agent-tick` by hand.
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="${1:-$HOME/slam_data}"
+mkdir -p "$ROOT"
+BASE="https://cvg.cit.tum.de/rgbd/dataset"
+for pair in \
+  "freiburg1 rgbd_dataset_freiburg1_xyz.tgz" \
+  "freiburg1 rgbd_dataset_freiburg1_desk.tgz" \
+  "freiburg2 rgbd_dataset_freiburg2_desk.tgz" \
+  "freiburg3 rgbd_dataset_freiburg3_sitting_static.tgz" \
+  "freiburg3 rgbd_dataset_freiburg3_walking_xyz.tgz" \
+  "freiburg3 rgbd_dataset_freiburg3_walking_halfsphere.tgz"; do
+  set -- $pair; fr=$1; tgz=$2
+  [[ -d "$ROOT/${tgz%.tgz}" ]] && continue
+  wget -c -O "/tmp/$tgz" "$BASE/$fr/$tgz"
+  tar -xzf "/tmp/$tgz" -C "$ROOT"
+done
+echo "OK · sequences ready in $ROOT"
+```
 
-The rest of the plan assumes **Option A**.
+### 2.3 Sequence/intrinsics matrix
+
+| Sequence family | Camera model | Use `TUMx.yaml` | Notes |
+|---|---|---|---|
+| fr1_* | Kinect v1, 640×480 | `TUM1.yaml` | Higher distortion |
+| fr2_* | Kinect v1, 640×480 | `TUM2.yaml` (add if needed) | Long static |
+| fr3_* | Asus Xtion, 640×480 | `TUM3.yaml` | All dynamic-people sequences |
+
+Only `TUM1.yaml` and `TUM3.yaml` ship today; if you want fr2 baselines, add a `TUM2.yaml` (a 5-line copy with fr2 intrinsics from TUM's website).
+
+### 2.4 Time-sync / depth-scale gotchas
+
+- TUM RGB and depth streams are **not synchronised** at the hardware level. Both `run_orb3_baseline.sh` and `run_dynaslam_baseline.sh` already regenerate `assoc.txt` with a 40 ms tolerance — keep that tolerance, do not tighten.
+- TUM depth PNGs are stored as **5000 = 1 m** (uint16). All three runners and `tum_adapter.py` already handle this; do not re-scale on disk.
+- Groundtruth poses are at ~100 Hz from a Vicon mocap. `eval_with_evo.py` interpolates to RGB timestamps via Umeyama — no manual alignment needed.
+
+### 2.5 Importing into the local Supabase
+
+For each sequence already listed in `tum_adapter.py`'s whitelist, the row must also exist in `public.sequences` so the UI dropdown shows it. The cloud DB already has these rows; locally they are created by `supabase db reset` if the migrations include them (they do).
+
+If you add a new sequence later, write a one-line `INSERT` migration and replay with `supabase db reset`.
 
 ---
 
-## 2. Prerequisites on the local PC
+## 3. Software installation on the local PC
 
-| Component | Version | Purpose |
-|---|---|---|
-| Docker Desktop / Engine | ≥ 24 | runs Supabase + frontend container |
-| Supabase CLI | ≥ 1.180 | `supabase start`, applies migrations, serves edge functions |
-| Node + bun | bun ≥ 1.1 | builds the Vite frontend |
-| Python | 3.10 | worker (stage4 poller, ingestion) |
-| CUDA + NVIDIA driver | ≥ 12.x | GPU for V-KAN / DynaSLAM |
-| ORB-SLAM3, DynaSLAM | built natively | baselines |
-| TUM RGB-D datasets | local FS | mounted at `./tum_data` |
+### 3.1 Compatibility matrix
+
+| Component | Linux (Ubuntu 22.04) | Windows 11 + WSL2 | macOS (Apple Silicon) |
+|---|---|---|---|
+| Frontend (Vite + bun) | ✅ native | ✅ native or WSL | ✅ native |
+| Supabase CLI (Docker) | ✅ native | ✅ via Docker Desktop | ✅ native |
+| Worker poller (Python) | ✅ native | ✅ WSL | ✅ native (CPU only) |
+| **V-KAN (PyTorch)** | ✅ CUDA | ✅ CUDA via WSL | ⚠️ CPU or MPS, ~10× slower |
+| **ORB-SLAM3 Docker** | ✅ | ⚠️ WSL only, X-forwarding off | ❌ no amd64 docker on M-series for this image |
+| **DynaSLAM Docker (needs GPU)** | ✅ NVIDIA | ✅ NVIDIA via WSL | ❌ no CUDA path |
+
+Bottom line: **Linux is the path of least resistance**; **Windows + WSL2 + NVIDIA** also works fully; **macOS** can run V-KAN (slowly) but not the two baseline Docker images.
+
+### 3.2 Install recipe — Ubuntu 22.04 (primary target)
+
+```bash
+# 1. NVIDIA + CUDA + container toolkit
+sudo apt install -y nvidia-driver-550
+distribution=$(. /etc/os-release; echo $ID$VERSION_ID)
+curl -s -L https://nvidia.github.io/libnvidia-container/gpgkey | sudo apt-key add -
+curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list \
+  | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+sudo apt update && sudo apt install -y nvidia-container-toolkit
+sudo systemctl restart docker
+
+# 2. Docker + Compose (Supabase CLI needs them)
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER  # log out/in
+
+# 3. Supabase CLI
+curl -fsSL https://supabase.com/install.sh | sh
+
+# 4. bun (frontend)
+curl -fsSL https://bun.sh/install | bash
+
+# 5. Python + PyTorch CUDA 12.4
+sudo apt install -y python3.11 python3.11-venv
+python3.11 -m venv ~/.venvs/vkan && source ~/.venvs/vkan/bin/activate
+pip install --index-url https://download.pytorch.org/whl/cu124 torch==2.4.0
+pip install -r worker/requirements.txt
+
+# 6. Baseline images
+docker pull jahaniam/orbslam3:latest
+docker pull yubaoliu/dynaslam:latest
+```
+
+### 3.3 Install recipe — Windows 11 + WSL2
+
+1. Install WSL2: `wsl --install -d Ubuntu-22.04`
+2. Install **Docker Desktop** with the *WSL2 backend* enabled.
+3. Install the NVIDIA Windows driver (≥ 555) — WSL inherits CUDA from it; do **not** install `nvidia-driver` inside WSL.
+4. From inside the Ubuntu shell, follow steps 3-6 of the Linux recipe.
+5. Run `nvidia-smi` inside WSL to confirm GPU passthrough before pulling DynaSLAM.
+
+### 3.4 Install recipe — macOS (frontend + V-KAN CPU only)
+
+```bash
+brew install supabase/tap/supabase bun python@3.11
+python3 -m venv ~/.venvs/vkan && source ~/.venvs/vkan/bin/activate
+pip install torch  # CPU/MPS build
+pip install -r worker/requirements.txt
+```
+
+Skip the two Docker baselines on macOS; if you need ORB-SLAM3 / DynaSLAM numbers, run them on a Linux box and push results via `tools/ingest_external_run.py`.
+
+### 3.5 Standalone (non-Docker) baseline builds — optional
+
+If you want to skip Docker and build the baselines from source:
+
+- **ORB-SLAM3**: needs `Pangolin`, `OpenCV ≥ 4.4`, `Eigen ≥ 3.3`, `DBoW2`, `g2o`. ~30 min build on Ubuntu. Then set `ORB3_BIN=<path>/Examples/RGB-D/rgbd_tum` and the `run_orb3_baseline.sh` script will use it.
+- **DynaSLAM**: same plus Mask-RCNN weights (~250 MB) and Python 2.7 (yes, really) for the segmentation server. Building this from source is painful; using `yubaoliu/dynaslam:latest` is strongly recommended.
 
 ---
 
-## 3. Migration steps
+## 4. Hardware options — what is "enough"?
 
-### Step 1 — Clone the codebase locally
-```bash
-git clone <your-github-mirror>   # use the GitHub sync that Lovable already maintains
-cd vkan-project
-bun install
-```
+### 4.1 Recommended GPU tiers
 
-### Step 2 — Boot a local Supabase
-```bash
-supabase init       # only first time
-supabase start      # spins up postgres+postgrest+studio at :54321 / studio :54323
-supabase db reset   # replays every file in supabase/migrations/  → all tables/RLS/grants
-```
-This recreates `runs`, `frames`, `sequences`, `agent_decisions`, `worker_heartbeats` with the same RLS policies and GRANTs you already have in cloud.
-
-### Step 3 — Deploy edge functions locally
-```bash
-supabase functions serve --env-file ./supabase/.env.local
-```
-Serves all six functions at `http://localhost:54321/functions/v1/<name>`. No code changes needed; they are standard Deno functions.
-
-Create `supabase/.env.local` with the same secrets you currently keep in Lovable Cloud:
-```env
-WORKER_INGEST_SECRET=<same-value-you-already-use>
-WORKER_AGENT_URL=http://host.docker.internal:8000   # local worker, see step 5
-LOVABLE_API_KEY=<optional; only if you still call Lovable AI Gateway>
-```
-
-### Step 4 — Point the frontend at the local backend
-Replace the cloud URL/anon key in `.env` (auto-generated file — for local you keep your **own** copy named `.env.local`, do NOT commit, do NOT touch the cloud-managed one):
-
-```env
-VITE_SUPABASE_URL=http://localhost:54321
-VITE_SUPABASE_PUBLISHABLE_KEY=<anon key printed by `supabase start`>
-VITE_SUPABASE_PROJECT_ID=local
-```
-Then:
-```bash
-bun run dev   # http://localhost:8080
-```
-The React code is unchanged — `src/integrations/supabase/client.ts` reads these env vars.
-
-### Step 5 — Run the worker against local Supabase
-The poller already speaks generic Supabase HTTP, so only its env changes:
-```bash
-cd worker
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-
-export SUPABASE_URL=http://localhost:54321
-export SUPABASE_SERVICE_ROLE_KEY=<service-role key from `supabase start` output>
-export WORKER_INGEST_SECRET=<same as edge function>
-export VKAN_CHECKPOINT=/models/vkan_fr3.pt
-export TUM_DATA_ROOT=/data/tum
-
-python -m stage4.poller --methods vkan,orb3,dynaslam
-```
-No Fly.io, no `fly.toml`, no `min_machines_running`. Start/stop the worker by hitting Ctrl-C.
-
-### Step 6 — Wire in DynaSLAM & ORB-SLAM3 locally
-Build them once on the PC (CMake + Pangolin + OpenCV + DBoW2). The existing shell wrappers
-`worker/stage4/run_dynaslam_baseline.sh` and `run_orb3_baseline.sh` already expect local binaries — just set their paths:
-```bash
-export ORB3_BIN=/opt/ORB_SLAM3/Examples/RGB-D/rgbd_tum
-export DYNASLAM_BIN=/opt/DynaSLAM/Examples/RGB-D/rgbd_tum
-```
-The poller will pick them up. Results land in the same `runs` table → automatically visible in the React UI and in the research-bundle ZIP.
-
-### Step 7 — (Optional) one-shot Docker Compose
-After everything works manually, freeze the stack:
-```yaml
-# docker-compose.yml (new file at repo root, local-only)
-services:
-  frontend:
-    build: .
-    ports: ["8080:8080"]
-    env_file: .env.local
-  worker:
-    build: ./worker
-    runtime: nvidia
-    volumes:
-      - ./tum_data:/data/tum
-      - ./models:/models
-    env_file: ./worker/.env.local
-# Supabase is started separately via `supabase start` (it owns its own compose).
-```
-
-### Step 8 — Data migration (cloud → local) — optional
-If you want to keep the runs already produced in the cloud:
-```bash
-# Export from cloud (read-only)
-psql "$CLOUD_DB_URL" -c "\\copy runs TO 'runs.csv' CSV HEADER"
-# Import locally
-psql "postgresql://postgres:postgres@localhost:54322/postgres" \
-     -c "\\copy runs FROM 'runs.csv' CSV HEADER"
-```
-Or simpler: download a **research bundle ZIP** per volume from `/reports`, then use `tools/ingest_external_run.py` to push each run into local Supabase.
-
----
-
-## 4. File-by-file mapping (online ↔ local)
-
-Legend: ✅ reuse unchanged · ✏️ edit values (env/URLs only) · 🔁 replace/regenerate · ➕ add new · ❌ drop
-
-| Area | File / Path | Online today | Local action | Notes |
+| Tier | GPU | V-KAN | DynaSLAM | Notes |
 |---|---|---|---|---|
-| Frontend code | `src/**/*.tsx`, `src/lib/**`, `src/components/**` | served by Lovable preview | ✅ reuse | Pure client code, no host coupling |
-| Frontend entry | `index.html`, `vite.config.ts`, `tailwind.config.ts` | ✅ | ✅ reuse | — |
-| Supabase client | `src/integrations/supabase/client.ts` | auto-gen, points to cloud URL | ✏️ regenerated on first `supabase start` (or just leave it — it reads env vars) | Do NOT hand-edit; control via `.env.local` |
-| Generated types | `src/integrations/supabase/types.ts` | auto-gen from cloud schema | 🔁 regenerate with `supabase gen types typescript --local > src/integrations/supabase/types.ts` | Run after every local migration |
-| Env (managed) | `.env` | cloud values, auto-managed | ❌ ignore locally | Don't touch — Lovable owns it |
-| Env (local) | `.env.local` | — | ➕ add | Points Vite at `localhost:54321` |
-| SQL schema | `supabase/migrations/*.sql` | applied to cloud | ✅ reuse — `supabase db reset` replays them | Same files, same order |
-| Edge functions | `supabase/functions/{enqueue-run,claim-run,ingest-run,ingest-frame,worker-health,agent-tick}/index.ts` | deployed to cloud | ✅ reuse — `supabase functions serve` runs them locally | Identical Deno code |
-| Function config | `supabase/config.toml` | auto-managed | ✅ reuse (CLI reads same file) | Don't change project-level fields |
-| Function secrets | Lovable Cloud secrets store | UI-managed | 🔁 move to `supabase/.env.local` | Same names: `WORKER_INGEST_SECRET`, `WORKER_AGENT_URL`, optional `LOVABLE_API_KEY` |
-| Worker — poller | `worker/stage4/poller.py` | runs on Fly machine | ✅ reuse | Only env vars differ |
-| Worker — V-KAN runner | `worker/stage4/run_vkan_real.py` | Fly GPU machine | ✅ reuse | Needs local CUDA |
-| Worker — baselines | `worker/stage4/run_{orb3,dynaslam}_baseline.sh` | placeholder on Fly (no GPU) | ✅ reuse — finally usable on your local GPU | Set `ORB3_BIN` / `DYNASLAM_BIN` |
-| Worker — eval | `worker/stage4/eval_with_evo.py`, `tum_adapter.py` | Fly | ✅ reuse | Pure Python |
-| Worker — agent | `worker/agent/**`, `worker/ros_bridge/**` | Fly | ✅ reuse | Same |
-| Worker — image | `worker/Dockerfile` | built for Fly amd64 | ✏️ add `--gpus all` base or switch base to `nvidia/cuda:12.4.0-runtime-ubuntu22.04` | Needed for DynaSLAM/Mask-RCNN |
-| Worker — Python deps | `worker/requirements.txt` | Fly | ✅ reuse | Add `torch+cu124` index if you go GPU |
-| Fly config | `worker/fly.toml` | drives Fly deploy | ❌ unused locally | Keep file for cloud option, or delete |
-| Compose | `docker-compose.yml` | — | ➕ add | Optional one-command boot |
-| External-run helper | `tools/ingest_external_run.py` | calls cloud ingest-run | ✏️ set `--supabase-url http://localhost:54321` and the local service-role key | Same script, different env |
-| Reports / bundle | `src/pages/Reports.tsx`, `src/lib/researchBundle.ts` | reads from cloud | ✅ reuse | Reads via supabase client → works against local DB |
-| Storage bucket | `agent-frames` (cloud) | cloud-managed | 🔁 recreate locally with `supabase storage create agent-frames --public=false` | One-time CLI call after `supabase start` |
-| Memory / docs | `mem/**`, `worker/README.md`, `tools/README.md`, `worker/stage4/INGEST.md` | docs | ✅ reuse | Add a `LOCAL.md` describing this plan |
-| GitHub sync | `.github/**`, `.git/` | Lovable ↔ GitHub | ✅ reuse | Keep mirror so you can still edit in Lovable if desired |
-| Lovable runtime | `.lovable/**`, `bun.lockb`, `package.json` | Lovable preview | ✅ reuse | Frontend stack is identical |
+| **Min (CPU-only)** | none | ✅ slow (~3 fps on fr3) | ❌ | OK for UI dev + ingesting external results only |
+| **Entry** | GTX 1660 / RTX 3050 (6 GB) | ✅ ~15 fps | ⚠️ Mask-RCNN fits but tight | Fine for a single sequence |
+| **Comfort (recommended)** | RTX 3060 / 4060 (8-12 GB) | ✅ 25-30 fps | ✅ ~10 fps incl. masks | Sweet spot for thesis runs |
+| **Generous** | RTX 4070 / 4080 (12-16 GB) | ✅ real-time | ✅ real-time | Parallel methods possible |
+
+Numbers are for TUM 640×480 RGB-D; doubling resolution roughly halves fps.
+
+### 4.2 CPU / RAM / disk
+
+- **CPU**: any modern 6-core (Ryzen 5 / i5 12th gen+). ORB-SLAM3 front-end is single-thread heavy — clock speed matters more than core count.
+- **RAM**: 16 GB minimum (Docker + Postgres + worker + browser). 32 GB if you want to keep MaskRCNN cached and run V-KAN training side by side.
+- **Disk**: 50 GB free. Breakdown: ~7 GB datasets, ~10 GB docker images (ORB3 + DynaSLAM + Supabase), ~5 GB Postgres + result blobs, the rest is cache headroom.
+- **GPU VRAM**: 6 GB is the floor for DynaSLAM's Mask-RCNN. V-KAN inference fits in 3 GB; training the V-KAN encoder from scratch wants ≥ 8 GB.
+
+### 4.3 GPU-less fallback
+
+If you do not have a GPU at all, the project is still useful:
+
+1. Run the **frontend + Supabase + worker poller** on CPU — V-KAN runs slowly, ORB-SLAM3 Docker also works (CPU-only baseline).
+2. Skip DynaSLAM locally; instead, run DynaSLAM on a Colab / friend's GPU machine and import results with `tools/ingest_external_run.py`.
+
+This is exactly the **Path D** flow that the project already supports — the local PC then acts purely as the dashboard + DB.
 
 ---
 
-## 5. What you gain / lose
+## 5. Per-task hardware decision table
 
-**Gain**
-- Real GPU for ORB-SLAM3 + DynaSLAM (Fly free machines have none).
-- Zero hosting cost; full offline operation.
-- Faster ingest (no Fly cold-start, no `min_machines_running` worry).
-- Full Postgres access (`psql`) for thesis-grade SQL queries.
-
-**Lose**
-- No public URL — you'd run `cloudflared tunnel` or `ngrok` if you want to share.
-- No automatic backups — schedule `pg_dump` yourself.
-- No Lovable visual editing against the local DB (you can keep editing UI in Lovable and just `git pull` to your PC).
+| Task | Needs GPU? | Min hardware | Recommended |
+|---|---|---|---|
+| Browse UI, look at past runs, build research bundles | No | Any laptop | Any |
+| Run a fresh V-KAN evaluation on one TUM sequence | Yes (CUDA) | 6 GB VRAM | RTX 3060 |
+| Run ORB-SLAM3 baseline | No (CPU OK) | 6-core CPU | 8-core CPU |
+| Run DynaSLAM baseline | **Yes** (Mask-RCNN) | 6 GB VRAM | RTX 3060+ |
+| Re-train V-KAN encoder from scratch | Yes (large) | 8 GB VRAM | RTX 4070+ |
+| Sweep across all 6 TUM sequences × 3 methods | Yes + patience | 8 GB VRAM, 50 GB disk | RTX 4070, 32 GB RAM |
 
 ---
 
-## 6. Suggested execution order (½ day of work)
+## 6. Action list when you switch to build mode
 
-1. `supabase init && supabase start && supabase db reset` → DB + functions live.
-2. Create `.env.local` for Vite + `supabase/.env.local` for functions → `bun run dev` shows the UI against local DB.
-3. Regenerate `src/integrations/supabase/types.ts` locally.
-4. Boot worker poller against local Supabase, run one V-KAN job end-to-end → confirm a row in `runs` and a downloadable bundle.
-5. Build ORB-SLAM3 + DynaSLAM, wire env paths, enqueue baseline runs.
-6. (Optional) write `docker-compose.yml` and a `LOCAL.md` for reproducibility.
-7. (Optional) `tools/ingest_external_run.py` past cloud runs into local DB.
+1. Add `docs/download_tum.sh` (script from § 2.2) and make it executable.
+2. Add `docs/LOCAL_DATASET.md` (sections 1-2 of this plan) and `docs/LOCAL_HARDWARE.md` (sections 3-5).
+3. Optionally add `worker/stage4/TUM2.yaml` so fr2 sequences can also be benchmarked.
+4. Cross-link both new docs from the **Roadmap** page (`src/pages/Roadmap.tsx`) under section "5 · Where to go next" so a new collaborator finds them.
 
-After step 4 you already have a **fully working local clone**; steps 5-7 are polish.
+Nothing in the running app changes — these are docs + a helper script + an optional intrinsics file.
