@@ -1,7 +1,7 @@
 # Project Memory
 
 ## Core
-All actions, system builds, modifications, and experiment runs MUST be auto-logged into downloadable DOCX technical reports — append in real time when a run reaches `done`/`failed`, auto-rollover to new volume by size (~50 runs), include timestamps + tables + embedded charts. Never bypass the auto-logger.
+All completed/failed experiment runs MUST surface in downloadable DOCX technical reports — source is the Cloud `runs` table (durable), rollover every ~50 entries, include timestamps + tables + ATE chart + per-run trajectory/FE snapshots. Never reintroduce a localStorage-based log.
 V-KAN architecture and workflow front-matter is fixed at the start of every report volume; only update it when the architecture itself changes.
 
 ## Memories

@@ -1,9 +1,10 @@
 ---
 name: Auto-report system
-description: Auto-logged DOCX technical reports for V-KAN runs, with rollover and download
+description: DOCX technical reports for V-KAN runs, sourced from the runs table, with rollover and download
 type: feature
 ---
-- Hook: `src/hooks/useAutoReport.ts` subscribes to `useRuns`, appends each newly-`done`/`failed` run to localStorage key `vkan_report_log_v1` with ISO timestamp.
-- Rollover: when current volume exceeds 50 entries, start next volume (vol_2, vol_3, ...).
-- Page: `/reports` — lists all volumes, "Download .docx" per volume; renders fixed front matter (V-KAN architecture + workflow), run history table, V-KAN vs ORB-SLAM3 vs DynaSLAM comparison + geomean, strength/weakness buckets (Low/Med/High dynamic_pct), and embedded ATE bar chart PNG (rendered via canvas).
-- Mount: auto-logger initialised in `App.tsx` so logging happens regardless of current route.
+- Source of truth: the Cloud `runs` table (durable, multi-machine). No localStorage involved.
+- Builder: `buildVolumesFromRuns(runs)` in `src/lib/reportLog.ts` — chronological, 50 entries per volume, includes only `done`/`failed` runs.
+- Page: `/reports` calls `useRuns(500)` + `buildVolumesFromRuns`; per-volume "Download .docx".
+- DOCX (`src/lib/reportDocx.ts`) contains: fixed V-KAN architecture/workflow front-matter, run history table, V-KAN vs ORB-SLAM3 vs DynaSLAM comparison + geomean, strength/weakness by dynamic_pct bucket, embedded ATE bar chart PNG, and per-run snapshots (up to 8 most recent V-KAN runs) with canvas-rendered trajectory top-down PNG (est vs GT + keyframes) and free-energy PNG (`src/lib/reportPerRunCharts.ts`).
+- Legacy shims (`getVolumes`, `ingestRuns`, `clearLog`, `logEvent`) in reportLog.ts are no-ops kept for source compatibility.
