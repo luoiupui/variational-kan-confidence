@@ -24,6 +24,7 @@ export type LogEntry =
       trajectory_gt?: [number, number, number][] | null;
       fe?: number[] | null;
       keyframes?: number[] | null;
+      ate_per_frame?: number[] | null;
     }
   | {
       kind: "event";
