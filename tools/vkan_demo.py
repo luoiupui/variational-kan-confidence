@@ -316,6 +316,10 @@ def main():
     p.add_argument("--out", type=str, default="vkan_demo.png")
     p.add_argument("--epochs", type=int, default=60)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--emit-results", type=str, default=None,
+                   metavar="RUN_ID",
+                   help="also write docs/results/<RUN_ID>/ so the run appears "
+                        "on the React /results page")
     args = p.parse_args()
 
     torch.manual_seed(args.seed)
@@ -337,6 +341,37 @@ def main():
           f"max FE={fe.max():.2f})")
 
     visualise(Path(args.out), X_np, fe, z, keyframes, snapshots, loss_curve)
+
+    if args.emit_results:
+        try:
+            from results_writer import write_result
+        except ImportError:
+            from tools.results_writer import write_result  # type: ignore
+        import matplotlib.pyplot as plt
+        # Re-render as a Figure handle the writer can savefig() with consistent dpi.
+        fig = plt.gcf()
+        write_result(
+            args.emit_results,
+            title=("V-KAN — " + (Path(args.tum).stem if args.tum else "synthetic scene")),
+            dataset=("TUM RGB-D" if args.tum else "synthetic"),
+            sequence=(str(args.tum) if args.tum else ""),
+            tags=["vkan", "demo", "dynamic" if args.tum else "synthetic"],
+            description=(
+                f"V-KAN variational encoder + bagged NOTEARS keyframe trigger. "
+                f"{len(keyframes)} keyframes / {X_np.shape[0]} frames."
+            ),
+            figures={"diagnostic.png": fig},
+            metrics={
+                "frames": int(X_np.shape[0]),
+                "keyframes": int(len(keyframes)),
+                "free_energy_mean": float(fe.mean()),
+                "free_energy_max": float(fe.max()),
+            },
+            series={
+                "free_energy": fe.tolist(),
+                "training_loss": [float(x) for x in loss_curve],
+            },
+        )
 
 
 if __name__ == "__main__":
