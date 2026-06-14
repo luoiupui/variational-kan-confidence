@@ -89,17 +89,9 @@ def umeyama(src, dst):
     if np.linalg.det(R) < 0:
         Vt[-1] *= -1
         R = Vt.T @ U.T
-    var_s = (Sc ** 2).sum() / len(S)
-    s = (np.trace(np.diag(_singular_values(H))) / var_s) if var_s > 0 else 1.0
-    # use simpler scale: ratio of norms
     s = (np.linalg.norm(Dc) / np.linalg.norm(Sc)) if np.linalg.norm(Sc) > 0 else 1.0
     t = mu_d - s * R @ mu_s
     return (s * (S @ R.T) + t).tolist()
-
-
-def _singular_values(M):
-    import numpy as np
-    return np.linalg.svd(M, compute_uv=False)
 
 
 def compute_metrics(est_xyz, gt_xyz, frames: int | None):
