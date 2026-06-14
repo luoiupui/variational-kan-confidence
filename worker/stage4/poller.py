@@ -138,7 +138,7 @@ def build_payload(run_id: str, row, final_json: Path) -> dict:
     seq = data["sequences"][0]
     method = row["method"]
     metrics = seq["metrics"].get(method, {})
-    return {
+    payload = {
         "run_id": run_id,
         "sequence_id": row["sequence_id"],
         "sequence_name": row["sequence_name"],
@@ -153,6 +153,21 @@ def build_payload(run_id: str, row, final_json: Path) -> dict:
         "map_points": seq.get("map_points"),
         "fe": seq.get("fe"),
     }
+    # Strict JSON does not allow NaN/Infinity; Deno's req.json() rejects them
+    # with a 400. Walking sequences occasionally produce non-finite values in
+    # Umeyama alignment or evo stats, so scrub before posting.
+    return _scrub_nonfinite(payload)
+
+
+def _scrub_nonfinite(obj):
+    import math
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, list):
+        return [_scrub_nonfinite(x) for x in obj]
+    if isinstance(obj, dict):
+        return {k: _scrub_nonfinite(v) for k, v in obj.items()}
+    return obj
 
 
 async def process(client, row) -> None:
