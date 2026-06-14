@@ -141,7 +141,7 @@ async def process(client, row) -> None:
     print(f"[poller] claim {run_id} {row['method']} {row['sequence_id']}", flush=True)
     await post_ingest(client, {**base, "status": "running"})
 
-    out_dir = DATA_ROOT / "results" / row["sequence_id"]
+    out_dir = DATA_ROOT / "results" / row["sequence_id"].replace("/", "_")
     try:
         final = run_method(row["method"], row["sequence_id"], out_dir)
         await post_ingest(client, build_payload(run_id, row, final))
