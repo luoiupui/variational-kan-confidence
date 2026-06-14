@@ -60,7 +60,20 @@ async def post_ingest(client: httpx.AsyncClient, payload: dict) -> None:
         headers={"x-worker-secret": SECRET, "content-type": "application/json"},
         timeout=60,
     )
-    r.raise_for_status()
+    if r.status_code >= 400:
+        # Surface the ingest-run validation error AND a compact preview of the
+        # payload so the failure shows up directly in the runs.error column.
+        preview = {
+            k: (
+                f"<{type(v).__name__} len={len(v)}>"
+                if isinstance(v, (list, dict)) else v
+            )
+            for k, v in payload.items()
+        }
+        raise RuntimeError(
+            f"ingest-run {r.status_code}: {r.text[:1500]}\n"
+            f"payload keys: {preview}"
+        )
 
 
 def run_method(method: str, sequence_id: str, out_dir: Path) -> Path:
