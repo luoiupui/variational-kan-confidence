@@ -162,7 +162,7 @@ def build_payload(run_id: str, row, final_json: Path) -> dict:
 def _scrub_nonfinite(obj):
     import math
     if isinstance(obj, float):
-        return obj if math.isfinite(obj) else None
+        return obj if math.isfinite(obj) else 0.0
     if isinstance(obj, list):
         return [_scrub_nonfinite(x) for x in obj]
     if isinstance(obj, dict):
